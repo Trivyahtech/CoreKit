@@ -1,12 +1,12 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api } from "@/platform/api/client";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { ShoppingBag, ArrowLeft, Check, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/modules/core/auth/AuthContext";
 
 export default function ProductDetailPage() {
   const params = useParams();

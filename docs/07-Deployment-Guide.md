@@ -72,8 +72,8 @@ npx prisma db seed
 npm run start:dev
 ```
 
-Backend runs at: `http://localhost:3000`  
-Swagger docs at: `http://localhost:3000/api/docs`
+Backend runs at: `http://localhost:6767`  
+Swagger docs at: `http://localhost:6767/api/docs`
 
 ### 2.4 Frontend Setup
 
@@ -87,7 +87,7 @@ npm install
 npm run dev
 ```
 
-Frontend runs at: `http://localhost:3001`
+Frontend runs at: `http://localhost:6768`
 
 ---
 
@@ -98,7 +98,7 @@ Frontend runs at: `http://localhost:3001`
 ```env
 # App
 NODE_ENV=development
-PORT=3000
+PORT=6767
 API_PREFIX=api
 APP_NAME=Corekit API
 
@@ -120,7 +120,7 @@ REDIS_PASSWORD=
 # Google OAuth (optional)
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
-GOOGLE_CALLBACK_URL=http://localhost:3000/api/v1/auth/google/callback
+GOOGLE_CALLBACK_URL=http://localhost:6767/api/v1/auth/google/callback
 
 # Email (optional for dev)
 SMTP_HOST=smtp.gmail.com
@@ -209,7 +209,7 @@ docker build -t corekit-backend:latest .
 ```bash
 docker run -d \
   --name corekit-backend \
-  -p 3000:3000 \
+  -p 6767:6767 \
   -e DATABASE_URL="postgresql://postgres:postgres@host.docker.internal:5432/corekit?schema=public" \
   -e JWT_SECRET="your-production-secret" \
   -e REDIS_HOST="host.docker.internal" \
@@ -248,7 +248,7 @@ services:
       context: ./corekit-backend
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "6767:6767"
     depends_on:
       - postgres
       - redis
@@ -311,7 +311,7 @@ server {
     server_name api.yourdomain.com;
 
     location / {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://localhost:6767;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -375,7 +375,7 @@ npm run lint               # Lint code
 |---------|----------|
 | Database connection refused | Verify Docker is running: `docker-compose ps` |
 | Prisma client not found | Run `npx prisma generate` |
-| Port 3000 already in use | Kill process: `lsof -ti:3000 \| xargs kill` |
+| Port 6767 already in use | Kill process: `lsof -ti:6767 \| xargs kill` |
 | Redis connection error | Check Redis container: `docker logs corekit-redis` |
 | CORS errors | Verify `CORS_ORIGIN` in `.env` matches frontend URL |
 | Migration errors | Try `npx prisma migrate reset` (dev only) |

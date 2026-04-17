@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api } from "@/platform/api/client";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ShoppingBag, Filter } from "lucide-react";
@@ -28,9 +28,9 @@ function ProductsContent() {
     : products;
 
   return (
-    <div className="pt-8 pb-16">
-      <div className="flex items-center justify-between border-b border-gray-200 pb-6">
-        <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+    <div className="py-4">
+      <div className="flex items-center justify-between border-b border-card-border pb-6">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
           {categoryParam
             ? categories?.find((c: any) => c.slug === categoryParam)?.name || "Category"
             : "All Products"}
@@ -41,22 +41,22 @@ function ProductsContent() {
         {/* Filters sidebar */}
         <aside className="hidden lg:block">
           <div className="flex items-center space-x-2 pb-4">
-            <Filter className="h-4 w-4 text-gray-500" />
-            <h2 className="text-lg font-medium text-gray-900">Category Filters</h2>
+            <Filter className="h-4 w-4 text-muted" />
+            <h2 className="text-base font-medium text-foreground">Category Filters</h2>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-3">
             <Link
               href="/products"
               className={`block text-sm ${
-                !categoryParam ? "font-semibold text-indigo-600" : "text-gray-600 hover:text-gray-900"
+                !categoryParam ? "font-semibold text-accent" : "text-muted hover:text-foreground"
               }`}
             >
               All Categories
             </Link>
             {loadingCategories ? (
               <div className="animate-pulse space-y-3">
-                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                <div className="h-4 bg-card-border rounded w-3/4" />
+                <div className="h-4 bg-card-border rounded w-1/2" />
               </div>
             ) : (
               categories?.map((category: any) => (
@@ -65,8 +65,8 @@ function ProductsContent() {
                   href={`/products?category=${category.slug}`}
                   className={`block text-sm ${
                     categoryParam === category.slug
-                      ? "font-semibold text-indigo-600"
-                      : "text-gray-600 hover:text-gray-900"
+                      ? "font-semibold text-accent"
+                      : "text-muted hover:text-foreground"
                   }`}
                 >
                   {category.name}
@@ -79,49 +79,39 @@ function ProductsContent() {
         {/* Product grid */}
         <div className="mt-6 lg:col-span-3 lg:mt-0">
           {loadingProducts ? (
-            <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>
+            <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent" /></div>
           ) : filteredProducts?.length === 0 ? (
-            <div className="text-center py-20 bg-gray-50 rounded-xl border border-gray-200 border-dashed">
-              <ShoppingBag className="mx-auto h-12 w-12 text-gray-300" />
-              <h3 className="mt-2 text-sm font-semibold text-gray-900">No products</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                We couldn't find any products in this category.
-              </p>
+            <div className="text-center py-20 bg-card-bg rounded-xl border border-card-border border-dashed">
+              <ShoppingBag className="mx-auto h-12 w-12 text-muted/30" />
+              <h3 className="mt-2 text-sm font-semibold text-foreground">No products</h3>
+              <p className="mt-1 text-sm text-muted">We couldn&apos;t find any products in this category.</p>
               <div className="mt-6">
-                <Link href="/products" className="text-indigo-600 hover:text-indigo-500 font-medium text-sm">
+                <Link href="/products" className="text-accent hover:text-accent/80 font-medium text-sm">
                   Clear filters
                 </Link>
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 gap-x-6">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {filteredProducts?.map((product: any) => (
-                <Link
-                  key={product.id}
-                  href={`/products/${product.id}`}
-                  className="group relative flex flex-col"
-                >
-                  <div className="aspect-h-1 aspect-w-1 w-full overflow-hidden rounded-xl bg-gray-50 border border-gray-200 group-hover:opacity-75 group-hover:border-indigo-300 transition-all">
-                    <div className="h-64 flex items-center justify-center text-gray-400">
+                <Link key={product.id} href={`/products/${product.id}`} className="group flex flex-col">
+                  <div className="aspect-square w-full overflow-hidden rounded-xl bg-card-bg border border-card-border group-hover:border-accent/50 group-hover:shadow-lg transition-all">
+                    <div className="h-full flex items-center justify-center text-muted">
                       <ShoppingBag className="h-12 w-12 opacity-20" />
                     </div>
                   </div>
-                  <div className="mt-4 flex-1 flex flex-col justify-between">
+                  <div className="mt-3 flex-1 flex flex-col justify-between">
                     <div>
-                      <h3 className="text-sm font-medium text-gray-900">
-                        {product.name}
-                      </h3>
-                      <p className="mt-1 text-sm text-gray-500 line-clamp-2">
+                      <h3 className="text-sm font-medium text-foreground">{product.name}</h3>
+                      <p className="mt-1 text-sm text-muted line-clamp-2">
                         {product.description || "Premium product by CoreKit"}
                       </p>
                     </div>
                     <div className="mt-2 flex items-center justify-between">
-                      <p className="text-base font-bold text-gray-900">
-                        ₹{product.variants[0]?.price || "0.00"}
-                      </p>
-                      <button className="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full font-medium group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                      <p className="text-base font-bold text-foreground">₹{product.variants[0]?.price || "0.00"}</p>
+                      <span className="text-xs bg-accent-light text-accent px-3 py-1.5 rounded-full font-medium group-hover:bg-accent group-hover:text-white transition-colors">
                         View Details
-                      </button>
+                      </span>
                     </div>
                   </div>
                 </Link>
@@ -136,7 +126,7 @@ function ProductsContent() {
 
 export default function ProductsPage() {
   return (
-    <Suspense fallback={<div className="flex justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>}>
+    <Suspense fallback={<div className="flex justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent" /></div>}>
       <ProductsContent />
     </Suspense>
   );

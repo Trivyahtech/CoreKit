@@ -31,7 +31,7 @@ CoreKit is an online shopping platform. You can browse and purchase products as 
 ### Accessing the Store
 
 - **Storefront:** Open your browser and navigate to the store URL (e.g., `http://localhost:3001`)
-- **API Documentation:** Developers can access Swagger docs at `http://localhost:3000/api/docs`
+- **API Documentation:** Developers can access Swagger docs at `http://localhost:6767/api/docs`
 
 ---
 

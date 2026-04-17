@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
-import { api, ApiError } from "@/lib/api";
+import { useAuth } from "@/modules/core/auth/AuthContext";
+import { api, ApiError } from "@/platform/api/client";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 
