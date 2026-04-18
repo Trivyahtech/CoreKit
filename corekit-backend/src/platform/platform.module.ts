@@ -7,6 +7,8 @@ import { CacheModule } from './cache/index.js';
 import { QueueModule } from './queue/index.js';
 import { MailModule } from './mail/mail.module.js';
 import { HealthModule } from './health/health.module.js';
+import { StorageModule } from './storage/index.js';
+import { SearchModule } from './search/index.js';
 
 @Module({
   imports: [
@@ -24,7 +26,9 @@ import { HealthModule } from './health/health.module.js';
     QueueModule,
     MailModule,
     HealthModule,
+    StorageModule,
+    SearchModule,
   ],
-  exports: [PrismaModule, CacheModule, QueueModule, MailModule],
+  exports: [PrismaModule, CacheModule, QueueModule, MailModule, StorageModule, SearchModule],
 })
 export class PlatformModule {}

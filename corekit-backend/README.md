@@ -1,98 +1,65 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# CoreKit E-Commerce Engine
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+CoreKit is a modular, high-performance e-commerce framework designed for scalability. It is split into a robust NestJS backend and a modern Next.js frontend, both structured around a clear `platform`, `common`, and `modules` architecture.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Current Project Status: Architecture Restructure Complete ✅
 
-## Description
+Both the **Backend** and **Frontend** have been successfully transitioned from a flat, monolithic structure to a scalable, three-tier architecture:
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+1. **`platform/`**: Technical runtime & infrastructure (Database, Cache, API Client, Theme Context).
+2. **`common/`**: Shared pure helpers (Utils, Interfaces, Layout Components, Decorators).
+3. **`modules/`**: Actual business logic isolated by feature domain.
 
-## Project setup
+---
 
-```bash
-$ npm install
-```
+## Completed Modules & Functionalities
 
-## Compile and run the project
+Built primarily in the backend and exposed via REST APIs to the frontend.
 
-```bash
-# development
-$ npm run start
+### Core Modules (`modules/core/`)
+These form the functional foundation of user identity and access:
+- **Auth Module**: 
+  - JWT generation and validation strategies.
+  - Login and authentication state management.
+- **Users Module**: 
+  - Standard user management (CRUD).
+  - Role-based properties implementation.
 
-# watch mode
-$ npm run start:dev
+### Base E-Commerce Modules (`modules/base/`)
+These represent the standard functionality required for day-to-day storefront operations:
+- **Catalog (Products & Categories)**: 
+  - Full CRUD operations for store categories and products.
+  - Publicly accessible APIs for storefront rendering.
+- **Cart Module**: 
+  - Active session cart tracking.
+  - Addition, modification, and deletion of cart items.
+  - Subtotal, tax calculation, and coupon validation logic.
+- **Addresses Module**: 
+  - Managing user shipping and billing addresses.
+  - `isDefault` address selections.
+- **Orders Module**: 
+  - Converts active carts (with selected addresses) into finalized orders.
+  - Stock validation and subtraction logic.
+  - Order status tracking (e.g., CREATED, COMPLETED, CANCELLED).
+- **Payments Module**:
+  - Payment initiation bound to generated orders.
+  - Supports "Cash on Delivery" (COD) immediately marking orders as `CONFIRMED`.
+  - Placeholder scaffolding for online integrated methods (like Razorpay).
 
-# production mode
-$ npm run start:prod
-```
+### Platform Infrastructure (`platform/`)
+- **Database**: Centralized `PrismaService` handling all DB transactions.
+- **Mail**: Email queueing system utilizing `BullMQ` (for sending order confirmations, status transitions).
+- **Cache**: Fast key-value operations caching powered by Redis.
+- **Health**: Liveness and readiness endpoints for cloud deployments.
 
-## Run tests
+---
 
-```bash
-# unit tests
-$ npm run test
+## Next Steps / Upcoming Features
+1. **Flesh out Payment Integrations**: Replace Razorpay placeholders with full webhook handling.
+2. **Shipping Implementations**: Connect logistics providers to dynamic calculation integrations.
+3. **Admin Dashboard (Frontend)**: Expanding current layout hooks (metrics, data tables) with React Query data binding.
+4. **Additional Roles & Permissions**: Enhancing access control matrix within `modules/core/roles`.
 
-# e2e tests
-$ npm run test:e2e
+---
 
-# test coverage
-$ npm run test:cov
-```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+*This project uses standard Next.js (port 6768) and NestJS implementations. Review internal `docs/` and architectural walkthroughs for deployment nuances.*
