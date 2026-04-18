@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api } from "@/platform/api/client";
 import { useState } from "react";
 import { Search, MoreVertical, Shield } from "lucide-react";
 

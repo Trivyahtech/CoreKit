@@ -1,10 +1,10 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api } from "@/platform/api/client";
 import Link from "next/link";
 import { Package, ChevronRight, Loader2 } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/modules/core/auth/AuthContext";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 

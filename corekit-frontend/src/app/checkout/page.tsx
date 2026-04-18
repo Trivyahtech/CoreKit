@@ -1,10 +1,10 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api } from "@/platform/api/client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/modules/core/auth/AuthContext";
 import { CheckCircle2, MapPin, Plus, Loader2 } from "lucide-react";
 
 export default function CheckoutPage() {

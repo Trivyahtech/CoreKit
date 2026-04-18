@@ -2,15 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
-import { api, ApiError } from "@/lib/api";
+import { useAuth } from "@/modules/core/auth/AuthContext";
+import { api, ApiError } from "@/platform/api/client";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
-  
+
   const [method, setMethod] = useState<"PASSWORD" | "OTP">("PASSWORD");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,12 +24,12 @@ export default function LoginPage() {
   });
 
   const handleRoleRedirect = (role: string) => {
-    if (role === 'ADMIN' || role === 'STAFF') {
-      router.push('/admin');
-    } else if (role === 'VENDOR') {
-      router.push('/vendor');
+    if (role === "ADMIN" || role === "STAFF") {
+      router.push("/admin");
+    } else if (role === "VENDOR") {
+      router.push("/vendor");
     } else {
-      router.push('/');
+      router.push("/");
     }
   };
 
@@ -37,7 +37,6 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-
     try {
       const response = await api.post("/auth/login", {
         tenantSlug: formData.tenantSlug,
@@ -66,9 +65,8 @@ export default function LoginPage() {
         email: formData.email,
       });
       setOtpSent(true);
-      setError(null);
     } catch (err: any) {
-       setError(err instanceof ApiError ? err.message : "Failed to send OTP");
+      setError(err instanceof ApiError ? err.message : "Failed to send OTP");
     } finally {
       setLoading(false);
     }
@@ -87,123 +85,125 @@ export default function LoginPage() {
       login(response.accessToken, response.user);
       handleRoleRedirect(response.user.role);
     } catch (err: any) {
-       setError(err instanceof ApiError ? err.message : "Invalid or expired OTP");
+      setError(err instanceof ApiError ? err.message : "Invalid or expired OTP");
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogleLogin = () => {
-    // Redirects to backend which redirects to Google OAuth consent screen
-    window.location.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'}/auth/google`;
+    window.location.href = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6767/api/v1"}/auth/google`;
   };
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg border border-gray-100">
+    <div className="min-h-screen flex items-center justify-center bg-background py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8 bg-card-bg p-8 rounded-2xl shadow-xl border border-card-border">
         <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+          <div className="flex justify-center mb-4">
+            <span className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 to-purple-600">
+              CoreKit
+            </span>
+          </div>
+          <h2 className="text-center text-2xl font-bold text-foreground">
             Sign in to your account
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
+          <p className="mt-2 text-center text-sm text-muted">
             Or{" "}
-            <Link href="/register" className="font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+            <Link href="/register" className="font-medium text-accent hover:text-accent/80 transition-colors">
               create a new account
             </Link>
           </p>
         </div>
 
         {/* Tab Selection */}
-        <div className="flex bg-gray-100 p-1 rounded-lg">
+        <div className="flex bg-background p-1 rounded-lg border border-card-border">
           <button
             onClick={() => { setMethod("PASSWORD"); setOtpSent(false); }}
-            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${method === "PASSWORD" ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"}`}
+            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${method === "PASSWORD" ? "bg-card-bg shadow text-foreground" : "text-muted hover:text-foreground"}`}
           >
             Password
           </button>
           <button
             onClick={() => setMethod("OTP")}
-            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${method === "OTP" ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"}`}
+            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${method === "OTP" ? "bg-card-bg shadow text-foreground" : "text-muted hover:text-foreground"}`}
           >
             Login via OTP
           </button>
         </div>
 
         {error && (
-          <div className="bg-red-50 text-red-700 p-3 rounded-md text-sm text-center">
+          <div className="bg-danger/10 text-danger p-3 rounded-lg text-sm text-center">
             {error}
           </div>
         )}
 
         {method === "PASSWORD" ? (
-          <form className="mt-8 space-y-6" onSubmit={handlePasswordLogin}>
+          <form className="space-y-5" onSubmit={handlePasswordLogin}>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Email address</label>
+                <label className="block text-sm font-medium text-foreground mb-1">Email address</label>
                 <input
                   type="email"
                   required
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  className="w-full px-3 py-2.5 bg-background border border-card-border rounded-lg text-foreground placeholder-muted text-sm focus:ring-2 focus:ring-accent/30 focus:border-accent outline-none transition-colors"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Password</label>
+                <label className="block text-sm font-medium text-foreground mb-1">Password</label>
                 <input
                   type="password"
                   required
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  className="w-full px-3 py-2.5 bg-background border border-card-border rounded-lg text-foreground placeholder-muted text-sm focus:ring-2 focus:ring-accent/30 focus:border-accent outline-none transition-colors"
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 />
               </div>
             </div>
-
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-70 transition-all"
+              className="w-full flex justify-center py-2.5 px-4 rounded-lg text-sm font-medium text-white bg-accent hover:bg-accent/90 disabled:opacity-70 transition-all shadow"
             >
               {loading ? <Loader2 className="animate-spin h-5 w-5" /> : "Sign in"}
             </button>
           </form>
         ) : (
-          <form className="mt-8 space-y-6" onSubmit={otpSent ? handleVerifyOtp : (e) => { e.preventDefault(); handleSendOtp(); }}>
+          <form className="space-y-5" onSubmit={otpSent ? handleVerifyOtp : (e) => { e.preventDefault(); handleSendOtp(); }}>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Email address</label>
+                <label className="block text-sm font-medium text-foreground mb-1">Email address</label>
                 <input
                   type="email"
                   required
                   disabled={otpSent}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-50"
+                  className="w-full px-3 py-2.5 bg-background border border-card-border rounded-lg text-foreground placeholder-muted text-sm focus:ring-2 focus:ring-accent/30 focus:border-accent outline-none transition-colors disabled:opacity-50"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 />
               </div>
               {otpSent && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">6-Digit OTP</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">6-Digit OTP</label>
                   <input
                     type="text"
                     required
                     maxLength={6}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm tracking-widest text-center text-xl font-mono"
+                    className="w-full px-3 py-2.5 bg-background border border-card-border rounded-lg text-foreground text-center text-xl font-mono tracking-widest focus:ring-2 focus:ring-accent/30 focus:border-accent outline-none transition-colors"
                     value={formData.otp}
                     onChange={(e) => setFormData({ ...formData, otp: e.target.value })}
                   />
-                  <p className="mt-2 text-xs text-center text-gray-500">
+                  <p className="mt-2 text-xs text-center text-muted">
                     Check your email for the OTP code. Wait 5 minutes to request another.
                   </p>
                 </div>
               )}
             </div>
-
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-70 transition-all"
+              className="w-full flex justify-center py-2.5 px-4 rounded-lg text-sm font-medium text-white bg-accent hover:bg-accent/90 disabled:opacity-70 transition-all shadow"
             >
               {loading ? <Loader2 className="animate-spin h-5 w-5" /> : otpSent ? "Verify & Login" : "Send OTP code"}
             </button>
@@ -213,17 +213,16 @@ export default function LoginPage() {
         <div className="mt-6">
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300" />
+              <div className="w-full border-t border-card-border" />
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">Or continue with</span>
+              <span className="px-2 bg-card-bg text-muted">Or continue with</span>
             </div>
           </div>
-
           <div className="mt-6">
             <button
               onClick={handleGoogleLogin}
-              className="w-full flex justify-center py-2.5 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              className="w-full flex justify-center py-2.5 px-4 border border-card-border rounded-lg shadow-sm bg-card-bg text-sm font-medium text-foreground hover:bg-card-border/30 transition-all"
             >
               <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />

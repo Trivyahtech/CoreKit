@@ -2,9 +2,9 @@
 
 | Field          | Value                                  |
 | -------------- | -------------------------------------- |
-| **Base URL**   | `http://localhost:3000/api/v1`         |
+| **Base URL**   | `http://localhost:6767/api/v1`         |
 | **Auth**       | Bearer JWT Token                       |
-| **Swagger UI** | `http://localhost:3000/api/docs`       |
+| **Swagger UI** | `http://localhost:6767/api/docs`       |
 | **Versioning** | URI-based (`/api/v1/`)                 |
 
 ---

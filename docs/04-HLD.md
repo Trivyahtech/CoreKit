@@ -189,8 +189,8 @@ Request Flow:
 
 - **Strategy:** URI-based versioning
 - **Default Version:** `v1`
-- **Base URL:** `http://localhost:3000/api/v1/`
-- **Swagger Docs:** `http://localhost:3000/api/docs`
+- **Base URL:** `http://localhost:6767/api/v1/`
+- **Swagger Docs:** `http://localhost:6767/api/docs`
 
 ---
 

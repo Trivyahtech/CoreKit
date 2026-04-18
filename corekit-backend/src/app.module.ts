@@ -1,44 +1,36 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
-import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import configuration from './config/configuration.js';
-import { validateEnv } from './config/env.validation.js';
+import { APP_GUARD, APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerGuard } from '@nestjs/throttler';
+
+// --- Platform Infrastructure ---
+import { PlatformModule } from './platform/platform.module.js';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard.js';
 import { RolesGuard } from './common/guards/roles.guard.js';
-import { PrismaModule } from './prisma/prisma.module.js';
-import { RedisModule } from './redis/redis.module.js';
-import { QueueModule } from './queue/queue.module.js';
-import { HealthModule } from './modules/health/health.module.js';
-import { AuthModule } from './modules/auth/auth.module.js';
-import { ProductsModule } from './modules/products/products.module.js';
-import { CategoriesModule } from './modules/categories/categories.module.js';
-import { CartModule } from './modules/cart/cart.module.js';
-import { AddressesModule } from './modules/addresses/addresses.module.js';
-import { OrdersModule } from './modules/orders/orders.module.js';
-import { PaymentsModule } from './modules/payments/payments.module.js';
-import { ShippingModule } from './modules/shipping/shipping.module.js';
-import { EmailModule } from './modules/email/email.module.js';
+import { HttpExceptionFilter, TransformInterceptor, LoggingInterceptor } from './common/index.js';
 
-import { UsersModule } from './modules/users/users.module.js';
+// --- Core Modules ---
+import { AuthModule } from './modules/core/auth/auth.module.js';
+import { UsersModule } from './modules/core/users/users.module.js';
+
+// --- Base Modules ---
+import { ProductsModule } from './modules/base/catalog/products/products.module.js';
+import { CategoriesModule } from './modules/base/catalog/categories/categories.module.js';
+import { CartModule } from './modules/base/cart/cart.module.js';
+import { AddressesModule } from './modules/base/addresses/addresses.module.js';
+import { OrdersModule } from './modules/base/orders/orders.module.js';
+import { PaymentsModule } from './modules/base/payments/payments.module.js';
+import { ShippingModule } from './modules/base/shipping/shipping.module.js';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-      cache: true,
-      load: [configuration],
-      validate: validateEnv,
-    }),
-    ThrottlerModule.forRoot({
-      throttlers: [{ ttl: 60000, limit: 60 }],
-    }),
-    PrismaModule,
-    RedisModule,
-    QueueModule,
-    HealthModule,
+    // Platform infrastructure (config, database, cache, queue, throttler, mail, health)
+    PlatformModule,
+
+    // Core modules
     AuthModule,
     UsersModule,
+
+    // Base modules
     ProductsModule,
     CategoriesModule,
     CartModule,
@@ -46,12 +38,23 @@ import { UsersModule } from './modules/users/users.module.js';
     OrdersModule,
     PaymentsModule,
     ShippingModule,
-    EmailModule,
   ],
   providers: [
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_FILTER,
+      useClass: HttpExceptionFilter,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TransformInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: LoggingInterceptor,
     },
     {
       provide: APP_GUARD,
