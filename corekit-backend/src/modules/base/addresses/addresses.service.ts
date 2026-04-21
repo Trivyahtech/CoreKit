@@ -42,16 +42,16 @@ export class AddressesService {
     });
   }
 
-  async findOne(id: string, userId: string) {
+  async findOne(id: string, userId: string, tenantId: string) {
     const address = await this.prisma.address.findFirst({
-      where: { id, userId },
+      where: { id, userId, tenantId },
     });
     if (!address) throw new NotFoundException('Address not found');
     return address;
   }
 
   async update(id: string, userId: string, tenantId: string, dto: UpdateAddressDto) {
-    const address = await this.prisma.address.findFirst({ where: { id, userId } });
+    const address = await this.prisma.address.findFirst({ where: { id, userId, tenantId } });
     if (!address) throw new NotFoundException('Address not found');
 
     if (dto.isDefault) {
@@ -65,7 +65,7 @@ export class AddressesService {
   }
 
   async setDefault(id: string, userId: string, tenantId: string) {
-    const address = await this.prisma.address.findFirst({ where: { id, userId } });
+    const address = await this.prisma.address.findFirst({ where: { id, userId, tenantId } });
     if (!address) throw new NotFoundException('Address not found');
 
     await this.prisma.address.updateMany({
@@ -76,8 +76,8 @@ export class AddressesService {
     return this.prisma.address.update({ where: { id }, data: { isDefault: true } });
   }
 
-  async remove(id: string, userId: string) {
-    const address = await this.prisma.address.findFirst({ where: { id, userId } });
+  async remove(id: string, userId: string, tenantId: string) {
+    const address = await this.prisma.address.findFirst({ where: { id, userId, tenantId } });
     if (!address) throw new NotFoundException('Address not found');
     await this.prisma.address.delete({ where: { id } });
     return { deleted: true };

@@ -15,8 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CoreKit E-Commerce",
-  description: "High-performance modular e-commerce engine",
+  title: "Mission NCC Store — Uniforms, insignia & study material",
+  description:
+    "Uniforms, insignia, camp badges and study material — curated for India's NCC cadets.",
 };
 
 export default function RootLayout({

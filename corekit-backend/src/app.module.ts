@@ -6,11 +6,13 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 import { PlatformModule } from './platform/platform.module.js';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard.js';
 import { RolesGuard } from './common/guards/roles.guard.js';
+import { PermissionsGuard } from './common/guards/permissions.guard.js';
 import { HttpExceptionFilter, TransformInterceptor, LoggingInterceptor } from './common/index.js';
 
 // --- Core Modules ---
 import { AuthModule } from './modules/core/auth/auth.module.js';
 import { UsersModule } from './modules/core/users/users.module.js';
+import { TenantsModule } from './modules/core/tenants/tenants.module.js';
 
 // --- Base Modules ---
 import { ProductsModule } from './modules/base/catalog/products/products.module.js';
@@ -20,6 +22,12 @@ import { AddressesModule } from './modules/base/addresses/addresses.module.js';
 import { OrdersModule } from './modules/base/orders/orders.module.js';
 import { PaymentsModule } from './modules/base/payments/payments.module.js';
 import { ShippingModule } from './modules/base/shipping/shipping.module.js';
+import { ReviewsModule } from './modules/base/reviews/reviews.module.js';
+import { CouponsModule } from './modules/base/coupons/coupons.module.js';
+import { InventoryModule } from './modules/base/inventory/inventory.module.js';
+import { PurchaseOrdersModule } from './modules/base/purchase-orders/purchase-orders.module.js';
+import { CustomersModule } from './modules/core/customers/customers.module.js';
+import { AdminDataModule } from './modules/core/admin/admin.module.js';
 
 @Module({
   imports: [
@@ -27,10 +35,13 @@ import { ShippingModule } from './modules/base/shipping/shipping.module.js';
     PlatformModule,
 
     // Core modules
+    TenantsModule,
     AuthModule,
     UsersModule,
+    CustomersModule,
 
-    // Base modules
+    // Base modules — InventoryModule first so its @Global provider resolves elsewhere
+    InventoryModule,
     ProductsModule,
     CategoriesModule,
     CartModule,
@@ -38,6 +49,10 @@ import { ShippingModule } from './modules/base/shipping/shipping.module.js';
     OrdersModule,
     PaymentsModule,
     ShippingModule,
+    ReviewsModule,
+    CouponsModule,
+    PurchaseOrdersModule,
+    AdminDataModule,
   ],
   providers: [
     {
@@ -63,6 +78,10 @@ import { ShippingModule } from './modules/base/shipping/shipping.module.js';
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: PermissionsGuard,
     },
   ],
 })

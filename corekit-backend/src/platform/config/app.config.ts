@@ -7,5 +7,6 @@ export default () => ({
     corsOrigin: (process.env.CORS_ORIGIN || '*')
       .split(',')
       .map((value) => value.trim()),
+    frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
   },
 });

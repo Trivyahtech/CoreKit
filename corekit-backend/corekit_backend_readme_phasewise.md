@@ -142,445 +142,257 @@ No commerce or niche-specific logic should be placed inside `core/`.
 
 ---
 
-# Phase-wise Module Roadmap
-
-## Phase 0 — Foundation Setup
-
-### Objective
-
-Establish the backend skeleton, infrastructure readiness, and shared architecture standards before feature development begins.
-
-### Scope
-
-- Project structure finalization
-- Path aliases setup
-- Global exception handling
-- Global response transformation
-- Validation pipeline
-- Base guards and decorators
-- Database configuration
-- Cache configuration
-- Queue configuration
-- Mail configuration
-- Storage abstraction
-- Search abstraction placeholder
-- Common DTO and utility patterns
-
-### Modules/Areas Covered
-
-- `shared/*`
-- `infrastructure/database`
-- `infrastructure/cache`
-- `infrastructure/queue`
-- `infrastructure/mail`
-- `infrastructure/storage`
-- `infrastructure/search`
-
-### Deliverables
-
-- Working NestJS app bootstrapped
-- Prisma connected and migration-ready
-- Global guards/interceptors configured
-- Standard error/response format finalized
-- Shared module conventions documented
-
-### Completion Criteria
-
-- App boots successfully
-- Environment validation works
-- Database connection is stable
-- Migrations run without issues
-- Common architecture is ready for module implementation
-
----
-
-## Phase 1 — Identity and Access Foundation
-
-### Objective
-
-Build the authentication and user-access backbone required by every future module.
-
-### Modules
-
-- `core/auth`
-- `core/users`
-- `core/roles`
-- `core/permissions`
-
-### Scope
-
-#### Auth
-
-- Register
-- Login
-- Refresh token
-- Logout
-- Forgot password
-- Reset password
-- JWT authentication
-- Public route support
-
-#### Users
-
-- Create user
-- Update user
-- View profile
-- List users
-- Activate/deactivate user
-- Soft delete support
-
-#### Roles
-
-- Role CRUD
-- Role assignment to users
-- System roles support
-
-#### Permissions
-
-- Permission registry
-- Role-permission mapping
-- Permission resolution
-- Route-level permission enforcement
-
-### Deliverables
-
-- Authentication flow is functional
-- RBAC is enforced through guards/decorators
-- User and role management APIs are ready
-
-### Completion Criteria
-
-- Users can register and log in
-- Protected routes work correctly
-- Roles and permissions are assignable
-- Unauthorized access is blocked correctly
-
----
-
-## Phase 2 — Tenant and System Control Layer
-
-### Objective
-
-Make the platform reusable for multiple clients through tenant-aware and configurable system behavior.
-
-### Modules
-
-- `core/tenants`
-- `core/config`
-- `core/settings`
-
-### Scope
-
-#### Tenants
-
-- Tenant creation and update
-- Tenant status management
-- Tenant slug/domain/subdomain support
-- Tenant-user association
-- Tenant context resolution
-
-#### Config
-
-- System configuration keys
-- Module-level behavior toggles
-- Feature flag foundation
-- Tenant override support
-- Default + override resolution
-
-#### Settings
-
-- Tenant settings
-- User settings
-- Branding settings
-- Locale/timezone/currency preferences
-- Application preferences
-
-### Deliverables
-
-- Multi-tenant structure is functional
-- Tenant-specific config resolution works
-- Tenant/user settings are manageable
-
-### Completion Criteria
-
-- Requests resolve current tenant correctly
-- Tenant-specific behavior can be configured
-- Settings can be retrieved and updated safely
-
----
-
-## Phase 3 — Traceability and File Support
-
-### Objective
-
-Add traceability and reusable file handling to support enterprise-level workflows.
-
-### Modules
-
-- `core/audit-log`
-- `core/uploads`
-
-### Scope
-
-#### Audit Log
-
-- Action logging
-- Actor tracking
-- Tenant tracking
-- Entity/action history
-- Filterable log entries
-- Critical event audit coverage
-
-#### Uploads
-
-- File upload API
-- File metadata storage
-- Type/size validation
-- Tenant-aware file organization
-- Storage abstraction compatibility
-
-### Deliverables
-
-- Audit logging available for important system actions
-- File upload flow available for future modules
-
-### Completion Criteria
-
-- Sensitive and important actions are logged automatically
-- Files are uploaded and tracked securely
-- Metadata is stored consistently
-
----
-
-## Phase 4 — Notification Backbone
-
-### Objective
-
-Create the communication layer used by all future business modules.
-
-### Modules
-
-- `core/notifications`
-
-### Scope
-
-- Notification event handling
-- Email notification dispatch
-- Queue-based sending
-- Notification templates
-- Notification history/logs
-- User preference awareness
-- Tenant branding support in templates
-
-### Deliverables
-
-- Notification system ready for auth, onboarding, and future business events
-- Basic email template pipeline completed
-
-### Completion Criteria
-
-- Events can trigger notifications
-- Notifications are queued and tracked
-- Template rendering works reliably
-
----
-
-## Phase 5 — Base Commerce Backbone
-
-### Objective
-
-Build the minimum business modules required for a fully functional commerce-capable backend.
-
-### Modules
-
-- `base/products`
-- `base/categories`
-- `base/inventory`
-- `base/cart`
-- `base/checkout`
-- `base/orders`
-- `base/addresses`
-- `base/payments`
-- `base/shipping`
-- `base/customers`
-- `base/admin-dashboard`
-
-### Scope
-
-#### Catalog and Inventory
-
-- Product CRUD
-- Category CRUD
-- Inventory tracking
-- Product-category relation
-
-#### Cart and Checkout
-
-- Cart create/update/remove flows
-- Address selection
-- Checkout summary
-- Stock validation
-
-#### Orders and Payments
-
-- Order creation
-- Order state lifecycle
-- Payment initiation and status handling
-- Payment/order linkage
-
-#### Shipping and Customer
-
-- Shipping charges/rules
-- Customer management
-- Customer address history
-
-#### Admin Dashboard
-
-- Operational summary APIs
-- Basic reporting widgets
-
-### Deliverables
-
-- Core commerce operations functional end to end
-
-### Completion Criteria
-
-- Product to order flow works
-- Checkout can create order successfully
-- Payment integration structure is ready
-- Admin can manage core commerce data
-
----
-
-## Phase 6 — Advanced Business Modules
-
-### Objective
-
-Enhance the platform with scalable business capabilities and marketplace-grade features.
-
-### Modules
-
-- `advanced/vendors`
-- `advanced/variants`
-- `advanced/coupons`
-- `advanced/reviews`
-- `advanced/reports`
-- `advanced/invoices`
-- `advanced/search`
-- `advanced/seo`
-- `advanced/cms`
-- `advanced/tracking`
-- `advanced/feature-flags`
-- `advanced/imports`
-- `advanced/exports`
-
-### Scope
-
-- Vendor and multi-seller operations
+# 4. PHASE-WISE SYSTEM EVOLUTION
+*(Enterprise SOP – Corekit Ecommerce Systems)*
+
+## 4.1 Objective
+This section defines the controlled, phase-wise evolution model for building ecommerce systems within the Corekit platform.
+The objective is to:
+- Enable progressive delivery of business capabilities aligned with real-world needs
+- Ensure early revenue readiness while maintaining long-term scalability
+- Establish a clear separation between foundational architecture and business features
+- Prevent rework by enforcing forward-compatible system design
+
+## 4.2 Core Principles
+
+### 4.2.1 Progressive Capability Unlock
+System capabilities must be introduced incrementally, with each phase delivering a complete and usable system state.
+
+### 4.2.2 Tenant-Aware Architecture (From Early Stage)
+The system must become tenant-aware from Phase 2 onward, even though full SaaS capabilities are introduced later.
+**Mandatory Implementation Rules:**
+- Every primary data entity must include `tenantId`
+- All queries must resolve and respect tenant context
+- No data operation should execute without tenant scoping
+
+### 4.2.3 Business-First Validation
+Revenue-generating flows must be validated before introducing advanced system complexity.
+
+### 4.2.4 Backward Stability
+Each phase must extend the system without breaking previously validated flows.
+
+### 4.2.5 Strict Phase Discipline
+- No cross-phase feature implementation
+- No premature optimization or abstraction
+- Each phase must pass validation before progression
+
+## 4.3 Phase Chronology Overview
+
+| Phase | Name | Primary Outcome |
+|---|---|---|
+| Phase 0 | Foundation & Infrastructure | System readiness |
+| Phase 1 | Identity & Access | Secure access control |
+| Phase 2 | Tenant Awareness | Multi-tenant readiness |
+| Phase 3 | Core Commerce | Revenue-ready D2C system |
+| Phase 4 | System Support Layer | Production stability |
+| Phase 5 | Commerce Enhancements | Feature-rich D2C platform |
+| Phase 6 | Marketplace Foundation | Multi-vendor readiness |
+| Phase 7 | Marketplace Financial System | Full marketplace operations |
+| Phase 8 | Retention & Growth | Engagement & optimization |
+| Phase 9+ | SaaS Enablement | Multi-tenant platform |
+
+## 4.4 PHASE DEFINITIONS
+
+### 🔹 Phase 0 — Foundation & Infrastructure
+**Objective:** Establish a stable technical foundation and enforce system-wide standards.
+**Modules:**
+- Infrastructure services (database, cache, queues, storage)
+- Shared utilities and base configurations
+**Capabilities Unlocked:**
+- System initialization and environment readiness
+- Standardized error handling and validation
+**Dependencies:**
+- Project setup and infrastructure provisioning
+**Validation Criteria:**
+- Application initializes successfully
+- All infrastructure services are operational
+- Standard coding and architectural patterns are implemented
+
+### 🔹 Phase 1 — Identity & Access
+**Objective:** Enable secure authentication and role-based access control.
+**Modules:**
+- Authentication
+- Users
+- Roles and permissions
+**Capabilities Unlocked:**
+- User registration and login
+- Role-based system access
+- Secure API protection
+**Dependencies:**
+- Phase 0 completion
+**Validation Criteria:**
+- Authentication flows are secure and reliable
+- Role restrictions are enforced correctly
+- Unauthorized access is prevented
+
+### 🔹 Phase 2 — Tenant Awareness
+**Objective:** Introduce tenant-aware architecture without enabling full SaaS capabilities.
+**Modules:**
+- Tenant entity (basic structure)
+- Configuration and settings layer
+**Capabilities Unlocked:**
+- Tenant identification and context resolution
+- Configurable system behavior per tenant
+**Critical Constraints:**
+- No subscription logic
+- No tenant UI
+- No SaaS-level complexity
+**Dependencies:**
+- Phase 1 completion
+**Validation Criteria:**
+- Tenant context is correctly resolved in all operations
+- Data isolation structure is in place
+- Configurations can vary per tenant
+
+### 🔹 Phase 3 — Core Commerce (D2C Enablement)
+**Objective:** Deliver a fully functional, revenue-ready ecommerce system for a single vendor.
+**Modules:**
+- Products and categories
+- Inventory management
+- Cart and checkout
+- Orders and payments
+- Shipping and customer management
+**Capabilities Unlocked:**
+- End-to-end customer purchase journey
+- Order creation and lifecycle management
+- Payment processing
+**Dependencies:**
+- Phase 2 completion
+**Validation Criteria:**
+- Complete purchase flow operates successfully
+- Orders and payments are correctly processed
+- System is usable by real customers
+
+### 🔹 Phase 4 — System Support Layer
+**Objective:** Enhance system stability, traceability, and communication.
+**Modules:**
+- Audit logs
+- File uploads
+- Notification system
+**Capabilities Unlocked:**
+- Action traceability
+- File management
+- Event-driven notifications
+**Dependencies:**
+- Phase 3 completion
+**Validation Criteria:**
+- All critical actions are logged
+- File handling is reliable
+- Notifications trigger correctly
+
+### 🔹 Phase 5 — Commerce Enhancements
+**Objective:** Improve user experience, conversion rates, and operational efficiency.
+**Modules:**
 - Product variants
-- Discount engine
+- Coupons and discounts
 - Reviews and ratings
+- Search and SEO
+- CMS and reporting
 - Invoice generation
-- Search optimization
-- SEO metadata control
-- CMS-managed sections
-- Tracking support
-- Module-level feature enable/disable
-- Import/export tools
+**Capabilities Unlocked:**
+- Advanced catalog management
+- Marketing and promotional features
+- Content and SEO control
+**Dependencies:**
+- Phase 4 completion
+**Validation Criteria:**
+- Enhancements integrate without breaking core flows
+- System performance remains stable
+- User experience improves measurably
 
-### Deliverables
+### 🔹 Phase 6 — Marketplace Foundation
+**Objective:** Introduce multi-vendor capabilities without financial complexity.
+**Modules:**
+- Vendor management
+- Vendor product ownership
+- Vendor dashboards
+**Capabilities Unlocked:**
+- Vendor onboarding and approval
+- Vendor-controlled product management
+- Vendor-level order visibility
+**Dependencies:**
+- Phase 5 completion
+**Validation Criteria:**
+- Vendors operate independently
+- Vendor data is isolated
+- Vendor actions do not affect other vendors
 
-- Platform becomes package-ready for mid/high-tier clients
+### 🔹 Phase 7 — Marketplace Financial System
+**Objective:** Enable complete marketplace operations including financial flows.
+**Modules:**
+- Order splitting engine
+- Commission calculation
+- Vendor payout system
+**Capabilities Unlocked:**
+- Multi-vendor order processing
+- Revenue sharing and settlements
+- Financial reconciliation
+**Dependencies:**
+- Phase 6 completion
+**Validation Criteria:**
+- Orders split correctly across vendors
+- Commission calculations are accurate
+- Vendor payouts are processed correctly
 
-### Completion Criteria
+### 🔹 Phase 8 — Retention & Growth
+**Objective:** Enhance customer engagement and revenue optimization.
+**Modules:**
+- Wishlist
+- Wallet and loyalty systems
+- Cashback and referral programs
+- Abandoned cart recovery
+**Capabilities Unlocked:**
+- Customer retention strategies
+- Marketing automation
+- Increased conversion rates
+**Dependencies:**
+- Phase 7 completion
+**Validation Criteria:**
+- Retention features function reliably
+- No negative impact on system performance
+- Measurable improvement in engagement metrics
 
-- Advanced modules integrate cleanly with base modules
-- Search/report/invoice/export flows work correctly
-- Feature flags can control advanced capabilities
+### 🔹 Phase 9+ — SaaS Enablement
+**Objective:** Transform the system into a multi-tenant SaaS ecommerce platform.
+**Modules:**
+- Tenant management (advanced)
+- Subscription and billing system
+- Feature flags and access control
+**Capabilities Unlocked:**
+- Multiple independent ecommerce stores
+- Configurable features per tenant
+- Subscription-based monetization
+**Dependencies:**
+- Phase 8 completion
+**Validation Criteria:**
+- Multiple tenants operate independently
+- No cross-tenant data leakage
+- System scales reliably with new tenants
 
----
+## 4.5 Phase Transition Rules
+Each phase must be formally validated and approved before moving forward.
+Transition requires:
+- Functional validation (flows working)
+- Technical validation (performance, stability)
+- Business validation (real-world usability)
 
-## Phase 7 — Additional Product Upgrades
+## 4.6 Common Risks and Preventive Measures
 
-### Objective
+| Risk | Preventive Measure |
+|---|---|
+| Premature feature implementation | Enforce strict phase boundaries |
+| Tenant rework later | Implement tenant awareness early (Phase 2) |
+| Broken core flows | Mandatory regression testing |
+| Marketplace instability | Validate D2C fully before Phase 6 |
+| SaaS complexity overload | Introduce only after marketplace maturity |
 
-Introduce optional, value-added modules that improve customer retention and conversion.
+## 4.7 Acceptance Criteria
+This section is considered complete when:
+- Phase sequence is clearly defined and approved
+- Each phase has measurable outputs
+- Dependencies and constraints are enforced
+- Teams can plan and execute based on phase definitions
 
-### Modules
-
-- `additional/wishlist`
-- `additional/flash-sales`
-- `additional/loyalty`
-- `additional/referrals`
-- `additional/wallet`
-- `additional/cashback`
-- `additional/abandoned-cart`
-- `additional/guest-cart`
-- `additional/review-moderation`
-- `additional/tax-rules`
-- `additional/payouts`
-- `additional/logistics`
-
-### Scope
-
-- Retention and marketing tools
-- Promotional flows
-- Wallet and loyalty features
-- Tax and payout logic
-- Guest and abandoned cart experience
-- Review governance
-- Logistics integrations
-
-### Deliverables
-
-- Optional business upgrades ready for selective package activation
-
-### Completion Criteria
-
-- Modules remain optional and isolated
-- No dependency leakage into core/base
-- Features can be enabled without architecture changes
-
----
-
-## Phase 8 — Premium and Future Modules
-
-### Objective
-
-Add enterprise, premium, or experimental capabilities without affecting the default reusable platform.
-
-### Modules
-
-- `extra/subscriptions`
-- `extra/ai-recommendations`
-- `extra/crm-automation`
-- `extra/analytics`
-- `extra/automation`
-- `extra/pricing-engine`
-- `extra/settlements`
-- `extra/integrations`
-- `extra/custom`
-
-### Scope
-
-- Subscription flows
-- Personalized recommendations
-- CRM automation
-- Deep analytics
-- Workflow automation
-- Dynamic pricing
-- Settlement engines
-- Enterprise connectors
-- Niche-specific custom modules
-
-### Deliverables
-
-- Premium module layer separated from the standard product backbone
-
-### Completion Criteria
-
-- Extra modules do not create coupling with standard product flow
-- Enterprise features remain isolated and configurable
 
 ---
 

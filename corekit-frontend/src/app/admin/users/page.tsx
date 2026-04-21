@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/platform/api/client";
+import { api, TENANT_SLUG } from "@/platform/api/client";
 import { useState } from "react";
 import { Search, MoreVertical, Shield } from "lucide-react";
 
@@ -12,7 +12,7 @@ export default function AdminUsersPage() {
 
   const { data: users, isLoading } = useQuery({
     queryKey: ["admin-users"],
-    queryFn: () => api.get("/users?tenant=corekit"),
+    queryFn: () => api.get(`/users?tenant=${TENANT_SLUG}`),
   });
 
   const updateRoleMutation = useMutation({
@@ -59,7 +59,7 @@ export default function AdminUsersPage() {
         >
           <option value="ALL">All Roles</option>
           <option value="CUSTOMER">Customer</option>
-          <option value="VENDOR">Vendor</option>
+          <option value="STAFF">Staff</option>
           <option value="ADMIN">Admin</option>
         </select>
       </div>
@@ -97,7 +97,7 @@ export default function AdminUsersPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <Shield className={`h-4 w-4 mr-1.5 ${user.role === 'ADMIN' ? 'text-purple-600' : user.role === 'VENDOR' ? 'text-amber-500' : 'text-gray-400'}`} />
+                        <Shield className={`h-4 w-4 mr-1.5 ${user.role === 'ADMIN' ? 'text-purple-600' : user.role === 'STAFF' ? 'text-amber-500' : 'text-gray-400'}`} />
                         <select
                           value={user.role}
                           onChange={(e) => updateRoleMutation.mutate({ userId: user.id, role: e.target.value })}
@@ -105,7 +105,7 @@ export default function AdminUsersPage() {
                           disabled={updateRoleMutation.isPending}
                         >
                           <option value="CUSTOMER">CUSTOMER</option>
-                          <option value="VENDOR">VENDOR</option>
+                          <option value="STAFF">STAFF</option>
                           <option value="ADMIN">ADMIN</option>
                         </select>
                       </div>

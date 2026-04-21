@@ -95,3 +95,35 @@ body {
   border-radius: 50%;
   border: 2px solid var(--topbar-bg);
 }
+
+/* Animations */
+@keyframes ck-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes ck-zoom-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes ck-slide-in-right {
+  from { opacity: 0; transform: translateX(1rem); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes ck-slide-in-bottom {
+  from { opacity: 0; transform: translateY(0.75rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-in { animation-duration: 200ms; animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1); animation-fill-mode: both; }
+.fade-in { animation-name: ck-fade-in; }
+.zoom-in-95 { animation-name: ck-zoom-in; }
+.slide-in-from-right-4 { animation-name: ck-slide-in-right; }
+.slide-in-from-bottom-2 { animation-name: ck-slide-in-bottom; }
+.duration-150 { animation-duration: 150ms; }
+.duration-200 { animation-duration: 200ms; }
+
+/* Focus ring */
+.ring-focus:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

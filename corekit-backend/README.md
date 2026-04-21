@@ -2,13 +2,25 @@
 
 CoreKit is a modular, high-performance e-commerce framework designed for scalability. It is split into a robust NestJS backend and a modern Next.js frontend, both structured around a clear `platform`, `common`, and `modules` architecture.
 
-## Current Project Status: Architecture Restructure Complete ✅
+## Phase Status (per `corekit_backend_readme_phasewise.md`)
 
-Both the **Backend** and **Frontend** have been successfully transitioned from a flat, monolithic structure to a scalable, three-tier architecture:
+| Phase | Scope (SOP) | Status |
+|---|---|---|
+| Phase 0 | Foundation & Infrastructure | ✅ Complete — `platform/` (DB, cache, queue, mail, storage, search, health, config + validateEnv) |
+| Phase 1 | Identity & Access | ✅ Complete — auth (JWT, OTP, Google SSO), users, roles, permissions |
+| Phase 2 | Tenant Awareness | ✅ Complete — `tenantId` on primary entities, tenant-scoped queries |
+| Phase 3 | Core Commerce (D2C) | ✅ Complete — products, categories, cart, addresses, orders, payments (COD + Razorpay w/ signature verify + webhook), shipping |
+| Phase 4+ | System support, enhancements, marketplace, SaaS | ⏳ Not started |
 
-1. **`platform/`**: Technical runtime & infrastructure (Database, Cache, API Client, Theme Context).
-2. **`common/`**: Shared pure helpers (Utils, Interfaces, Layout Components, Decorators).
-3. **`modules/`**: Actual business logic isolated by feature domain.
+> Earlier commit message `"phase 0 completed"` was mis-labeled; the repo is at the end of **Phase 3**.
+
+## Architecture
+
+Both the **Backend** and **Frontend** follow a scalable, three-tier architecture:
+
+1. **`platform/`**: Technical runtime & infrastructure (Database, Cache, Queue, Mail, Storage, Search, Health, Config).
+2. **`common/`**: Shared pure helpers (Utils, Interfaces, Layout Components, Decorators, Guards, Filters, Interceptors).
+3. **`modules/`**: Actual business logic isolated by feature domain (`core/`, `base/`).
 
 ---
 
@@ -44,7 +56,7 @@ These represent the standard functionality required for day-to-day storefront op
 - **Payments Module**:
   - Payment initiation bound to generated orders.
   - Supports "Cash on Delivery" (COD) immediately marking orders as `CONFIRMED`.
-  - Placeholder scaffolding for online integrated methods (like Razorpay).
+  - Razorpay online payments with HMAC-SHA256 signature verification on client-side `verify`, and a signed server-to-server webhook (`/payments/webhook/razorpay`) for async capture.
 
 ### Platform Infrastructure (`platform/`)
 - **Database**: Centralized `PrismaService` handling all DB transactions.

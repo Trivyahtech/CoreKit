@@ -25,7 +25,7 @@ export class AddressesController {
   @Get(':id')
   @ApiOperation({ summary: 'Get address by ID' })
   findOne(@Param('id') id: string, @Request() req: any) {
-    return this.addressesService.findOne(id, req.user.id);
+    return this.addressesService.findOne(id, req.user.id, req.user.tenantId);
   }
 
   @Patch(':id')
@@ -43,6 +43,6 @@ export class AddressesController {
   @Delete(':id')
   @ApiOperation({ summary: 'Delete an address' })
   remove(@Param('id') id: string, @Request() req: any) {
-    return this.addressesService.remove(id, req.user.id);
+    return this.addressesService.remove(id, req.user.id, req.user.tenantId);
   }
 }

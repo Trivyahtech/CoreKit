@@ -452,3 +452,85 @@ graph LR
     
     L[Admin /admin] --> M[Admin Users /admin/users]
 ```
+
+---
+
+## Appendix A — v1.1 Extended Page Map (2026-04-21)
+
+Adds functionality beyond the original scope: account management, wishlist, password recovery, review UX, richer admin with RBAC, and creative polish (cart drawer, command palette, recently viewed, promo banner).
+
+### Storefront pages
+
+| Route | Purpose | Auth | States |
+|-------|---------|:---:|--------|
+| `/` | Home — hero, value props, featured categories, latest arrivals, recently viewed | Public | loading, error, empty |
+| `/products` | Product listing + filters + sort + search (`?q=`, `?category=`) | Public | loading, error, empty |
+| `/products/[id]` | Product detail — gallery, variants, stock, reviews, wishlist, breadcrumbs | Public | loading, error (404) |
+| `/categories` | Browse categories grid | Public | loading, error, empty |
+| `/cart` | Full cart view — qty, remove, coupon apply, totals | Required | empty, loading |
+| `/checkout` | 3-step (Address → Payment → Review) with progress indicator | Required | loading, error |
+| `/orders` | Customer order list with status + payment badges | Required | loading, error, empty |
+| `/orders/[id]` | Order detail — 5-step timeline, items, totals, addresses, "order placed" banner (`?placed=1`) | Required | loading, error (404) |
+| `/wishlist` | Saved products (localStorage) | Public | empty |
+| `/account` | Profile tabs: Profile · Security (reset password) · Preferences (theme, email prefs) | Required | — |
+| `/account/addresses` | Address book CRUD with default flag | Required | loading, empty, error |
+| `/login` | Password + Email OTP + Google + temporary "Dev admin" button | Public | error, loading |
+| `/register` | Sign-up | Public | error, loading |
+| `/forgot-password` | Request reset link | Public | success state |
+| `/reset-password?token=` | Set new password via link | Public | missing-token, success |
+| `/not-found` | 404 page | Public | — |
+
+### Admin pages (RBAC-gated: ADMIN / STAFF / SUPERADMIN; VENDOR sees catalog only)
+
+| Route | Purpose | Required role |
+|-------|---------|---------------|
+| `/admin` | Dashboard — live revenue/orders/users/products cards, recent orders, quick actions | ADMIN · STAFF · SUPERADMIN |
+| `/admin/orders` | Orders list with filters, search, pagination | ADMIN · STAFF · SUPERADMIN |
+| `/admin/orders/[id]` | Order detail with status update + timeline | ADMIN · STAFF · SUPERADMIN |
+| `/admin/products` | Catalog list with filters + pagination | ADMIN · STAFF · VENDOR · SUPERADMIN |
+| `/admin/products/new` | Create product (draft) | ADMIN · STAFF · VENDOR · SUPERADMIN |
+| `/admin/products/[id]` | Edit product, publish/unpublish, assign categories, delete (ADMIN only) | ADMIN · STAFF · VENDOR · SUPERADMIN |
+| `/admin/categories` | Hierarchical tree with inline CRUD | ADMIN · STAFF · SUPERADMIN |
+| `/admin/coupons` | Placeholder (pending backend `/coupons` CRUD) | ADMIN · STAFF · SUPERADMIN |
+| `/admin/reviews` | Placeholder (pending backend `/reviews` moderation) | ADMIN · STAFF · SUPERADMIN |
+| `/admin/shipping` | Zones + rate rules CRUD, COD toggle per rule | ADMIN · SUPERADMIN |
+| `/admin/users` | User list, search, role change | ADMIN · SUPERADMIN |
+| `/admin/settings` | Tenant info + local preferences (dark mode, COD toggle) | ADMIN · SUPERADMIN |
+
+### Cross-cutting UI
+
+| Component | Location | Notes |
+|-----------|----------|-------|
+| Cart drawer | Navbar cart icon | Slide-in with qty stepper + checkout CTA |
+| Global toast | `ToastProvider` at app root | success/error/warning/info, auto-dismiss |
+| Confirm dialog | `ConfirmDialogProvider` + `useConfirm()` | Promise-based imperative API |
+| Modal | `<Modal>` primitive | Focus-trap, ESC, backdrop-click close |
+| Command palette | Admin shell, ⌘K / Ctrl+K | Fuzzy search admin routes, keyboard navigation |
+| Promo banner | Top of storefront shell | Dismissable via localStorage |
+| Recently viewed | Home page strip | Up to 8 products tracked in localStorage |
+| Wishlist heart | Product cards + detail | localStorage-backed, global count in navbar |
+| Role guard | `<RoleGuard allow={[...]}>` | Wraps admin layout; redirects on denial |
+| Breadcrumbs | `<Breadcrumbs>` primitive | Used across admin pages |
+| Data table | `<DataTable>` primitive | Sortable columns, empty state |
+| Pagination | `<Pagination>` primitive | Range numerics with ellipsis |
+| Tabs | `<Tabs>` primitive | Used in Account page |
+| Error boundary | `app/error.tsx` | Global render-time error fallback |
+
+### Component library additions
+
+Button · Input · Select · Textarea · Switch · Checkbox · Card (Header/Body/Footer) · Badge · StatusBadge · Stars · Price · QuantityStepper · Skeleton · ProductCardSkeleton · Spinner · PageLoader · EmptyState · ErrorState · Modal · ConfirmDialog · Toast · Tabs · DataTable · Pagination · Breadcrumbs · WishlistButton · CartDrawer · ReviewsSection · CommandPalette · PromoBanner · RecentlyViewed
+
+### RBAC
+
+- `useRole()` hook returns booleans: `isAdmin`, `isStaff`, `isVendor`, `isCustomer`, plus capability flags (`canManageCatalog`, `canManageOrders`, `canDeleteProducts`, `canManageUsers`, `canModerateReviews`, `canManageShipping`, `canManageCoupons`, `canManageSettings`).
+- `<RoleGuard allow={["ADMIN","STAFF"]}>` guards admin routes at the layout level; redirects to `/login` if unauthenticated and to `/` if unauthorized.
+- Sidebar and navbar filter menu items by role.
+- UI-level capability checks hide destructive actions (e.g. delete product) from non-authorized roles.
+
+### Pending backend endpoints (UI ready)
+
+- `POST /reviews`, `PATCH /reviews/:id/moderate` — review submission and moderation
+- `/coupons` CRUD — admin coupon management
+- `/users/me` / `/users/me/password` — profile edit & in-app password change
+- `GET /orders?scope=tenant` — admin sees all orders (currently scoped to user)
+- Tenant settings endpoint — replaces browser-local admin settings

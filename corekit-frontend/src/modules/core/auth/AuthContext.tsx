@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { api } from "@/platform/api/client";
+import { api, ApiError } from "@/platform/api/client";
 
 type User = {
   id: string;
@@ -32,7 +32,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const userData = await api.get("/auth/me");
           setUser(userData);
         } catch (error) {
-          console.error("Session expired or invalid token", error);
+          // 401 just means the token is stale — silently sign out.
+          if (!(error instanceof ApiError) || error.status !== 401) {
+            console.error("Auth session check failed", error);
+          }
           localStorage.removeItem("token");
         }
       }

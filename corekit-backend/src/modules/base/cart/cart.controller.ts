@@ -30,13 +30,13 @@ export class CartController {
     @Param('itemId') itemId: string,
     @Body() dto: UpdateCartItemDto,
   ) {
-    return this.cartService.updateItemQuantity(req.user.id, itemId, dto.quantity);
+    return this.cartService.updateItemQuantity(req.user.id, req.user.tenantId, itemId, dto.quantity);
   }
 
   @Delete('items/:itemId')
   @ApiOperation({ summary: 'Remove item from cart' })
   removeItem(@Request() req: any, @Param('itemId') itemId: string) {
-    return this.cartService.removeItem(req.user.id, itemId);
+    return this.cartService.removeItem(req.user.id, req.user.tenantId, itemId);
   }
 
   @Delete()
