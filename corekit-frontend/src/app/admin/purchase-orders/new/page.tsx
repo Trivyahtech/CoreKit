@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
-import { api, ApiError, TENANT_SLUG } from "@/platform/api/client";
+import { api, ApiError } from "@/platform/api/client";
 import { AdminPageHeader } from "@/common/components/layout/AdminPageHeader";
 import { Button } from "@/common/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/common/components/ui/Card";
@@ -18,14 +18,12 @@ type Supplier = { id: string; name: string };
 
 type AdminVariant = {
   id: string;
+  product: {
+    id: string;
+    name: string;
+  };
   sku: string;
   title?: string | null;
-};
-
-type AdminProduct = {
-  id: string;
-  name: string;
-  variants: AdminVariant[];
 };
 
 type LineItem = {
@@ -43,9 +41,9 @@ export default function NewPurchaseOrderPage() {
     queryFn: () => api.get("/purchase-orders/suppliers"),
   });
 
-  const { data: products } = useQuery<AdminProduct[]>({
-    queryKey: ["admin-products"],
-    queryFn: () => api.get(`/products?tenant=${TENANT_SLUG}`),
+  const { data: variants } = useQuery<AdminVariant[]>({
+    queryKey: ["admin-po-catalog-variants"],
+    queryFn: () => api.get("/purchase-orders/catalog/variants"),
   });
 
   const [supplierId, setSupplierId] = useState("");
@@ -57,16 +55,14 @@ export default function NewPurchaseOrderPage() {
 
   const variantOptions = useMemo(() => {
     const opts: Array<{ id: string; label: string }> = [];
-    for (const p of products || []) {
-      for (const v of p.variants || []) {
-        opts.push({
-          id: v.id,
-          label: `${p.name}${v.title ? ` · ${v.title}` : ""} (${v.sku})`,
-        });
-      }
+    for (const v of variants || []) {
+      opts.push({
+        id: v.id,
+        label: `${v.product.name}${v.title ? ` · ${v.title}` : ""} (${v.sku})`,
+      });
     }
     return opts;
-  }, [products]);
+  }, [variants]);
 
   const subtotal = useMemo(
     () =>

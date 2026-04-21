@@ -106,12 +106,15 @@ export default function CheckoutPage() {
   }>({
     queryKey: ["payment-providers"],
     queryFn: () => api.get("/payments/providers"),
+    enabled: !!user,
     staleTime: 10 * 60 * 1000,
   });
 
   const razorpayEnabled =
     paymentProviders?.providers.find((p) => p.id === "RAZORPAY")?.enabled ??
     false;
+  const codEnabled =
+    paymentProviders?.providers.find((p) => p.id === "COD")?.enabled ?? true;
 
   const { data: addresses, isLoading: loadingAddresses } = useQuery<Address[]>({
     queryKey: ["addresses"],
@@ -173,19 +176,23 @@ export default function CheckoutPage() {
     [quotes, shippingRuleId],
   );
 
-  // If current shipping rule doesn't allow COD, switch to online (if available)
+  // Keep the selected payment method aligned with shipping constraints and tenant settings.
   useEffect(() => {
-    if (selectedQuote && !selectedQuote.isCodAllowed && method === "COD") {
-      if (razorpayEnabled) setMethod("RAZORPAY");
+    if (method === "COD") {
+      const codBlockedByShipping = !!selectedQuote && !selectedQuote.isCodAllowed;
+      if ((codBlockedByShipping || !codEnabled) && razorpayEnabled) {
+        setMethod("RAZORPAY");
+      }
     }
-  }, [selectedQuote, method, razorpayEnabled]);
-
-  // Reset to COD if Razorpay is selected but not enabled
-  useEffect(() => {
-    if (method === "RAZORPAY" && paymentProviders && !razorpayEnabled) {
+    if (
+      method === "RAZORPAY" &&
+      !razorpayEnabled &&
+      codEnabled &&
+      (!selectedQuote || selectedQuote.isCodAllowed)
+    ) {
       setMethod("COD");
     }
-  }, [method, paymentProviders, razorpayEnabled]);
+  }, [method, selectedQuote, codEnabled, razorpayEnabled]);
 
   const addAddress = useMutation({
     mutationFn: (data: typeof form) =>
@@ -265,9 +272,12 @@ export default function CheckoutPage() {
         : quoteErr.message
       : null;
 
+  const codAllowedForCurrentQuote =
+    codEnabled && (!selectedQuote || selectedQuote.isCodAllowed);
+  const hasAnyPaymentOption = razorpayEnabled || codAllowedForCurrentQuote;
   const canAdvanceToPayment = !!addressId && !showNew;
   const canAdvanceToReview =
-    !!shippingRuleId && !!selectedQuote && !quoteError;
+    !!shippingRuleId && !!selectedQuote && !quoteError && hasAnyPaymentOption;
 
   const totalWithShipping = cart
     ? Number(cart.subtotal) +
@@ -601,14 +611,14 @@ export default function CheckoutPage() {
                     <button
                       type="button"
                       onClick={() => setMethod("COD")}
-                      disabled={selectedQuote && !selectedQuote.isCodAllowed}
+                      disabled={!codEnabled || (selectedQuote && !selectedQuote.isCodAllowed)}
                       className={cn(
                         "w-full text-left flex items-start gap-3 rounded-xl border-2 p-4 transition-colors",
                         method === "COD"
                           ? "border-accent bg-accent/5"
                           : "border-card-border bg-card-bg hover:border-accent/40",
-                        selectedQuote &&
-                          !selectedQuote.isCodAllowed &&
+                        (!codEnabled ||
+                          (selectedQuote && !selectedQuote.isCodAllowed)) &&
                           "opacity-50 cursor-not-allowed",
                       )}
                     >
@@ -618,7 +628,9 @@ export default function CheckoutPage() {
                           Cash on delivery
                         </p>
                         <p className="text-xs text-muted mt-0.5">
-                          {selectedQuote && !selectedQuote.isCodAllowed
+                          {!codEnabled
+                            ? "Disabled by store configuration"
+                            : selectedQuote && !selectedQuote.isCodAllowed
                             ? "Not available for this shipping method"
                             : "Pay with cash when your order arrives"}
                         </p>
@@ -628,6 +640,11 @@ export default function CheckoutPage() {
                       )}
                     </button>
                   </div>
+                  {!hasAnyPaymentOption && (
+                    <p className="mt-3 text-sm text-danger" role="alert">
+                      No payment methods are currently available for this order.
+                    </p>
+                  )}
 
                   <div className="mt-6 flex justify-between">
                     <Button variant="outline" onClick={() => setStep(1)}>

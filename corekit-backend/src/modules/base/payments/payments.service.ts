@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../../platform/database/prisma.service.js';
+import { TenantsService } from '../../core/tenants/tenants.service.js';
 import { CreatePaymentDto } from './dto/create-payment.dto.js';
 import { VerifyPaymentDto } from './dto/update-payment.dto.js';
 
@@ -16,7 +17,28 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly tenants: TenantsService,
   ) {}
+
+  private isRazorpayEnabled(): boolean {
+    const razorpayKeyId = this.config.get<string>('payments.razorpayKeyId');
+    const razorpaySecret = this.config.get<string>('payments.razorpayKeySecret');
+    return !!(razorpayKeyId && razorpaySecret);
+  }
+
+  async listProviders(tenantId: string) {
+    const tenantConfig = await this.tenants.getConfig(tenantId);
+    return {
+      providers: [
+        { id: 'COD', name: 'Cash on Delivery', enabled: tenantConfig.codEnabled },
+        {
+          id: 'RAZORPAY',
+          name: 'Online payment (Razorpay)',
+          enabled: this.isRazorpayEnabled(),
+        },
+      ],
+    };
+  }
 
   private verifyRazorpaySignature(
     gatewayOrderId: string,
@@ -48,6 +70,7 @@ export class PaymentsService {
   }
 
   async initiate(userId: string, tenantId: string, dto: CreatePaymentDto) {
+    const tenantConfig = await this.tenants.getConfig(tenantId);
     const order = await this.prisma.order.findFirst({
       where: { id: dto.orderId, userId, tenantId },
     });
@@ -59,6 +82,9 @@ export class PaymentsService {
     }
 
     if (dto.provider === 'COD') {
+      if (!tenantConfig.codEnabled) {
+        throw new BadRequestException('Cash on delivery is disabled for this tenant');
+      }
       // COD: mark payment as authorized immediately
       const payment = await this.prisma.payment.create({
         data: {
@@ -90,6 +116,10 @@ export class PaymentsService {
       });
 
       return payment;
+    }
+
+    if (dto.provider === 'RAZORPAY' && !this.isRazorpayEnabled()) {
+      throw new BadRequestException('Razorpay is not configured');
     }
 
     // Online payment (Razorpay placeholder)
@@ -230,9 +260,16 @@ export class PaymentsService {
     });
   }
 
-  async findOne(id: string) {
-    const payment = await this.prisma.payment.findUnique({
-      where: { id },
+  async findOne(
+    id: string,
+    userId: string,
+    tenantId: string,
+    opts: { allTenantPayments?: boolean } = {},
+  ) {
+    const payment = await this.prisma.payment.findFirst({
+      where: opts.allTenantPayments
+        ? { id, tenantId }
+        : { id, tenantId, order: { userId } },
       include: {
         order: {
           select: { id: true, orderNumber: true, status: true, grandTotal: true },

@@ -120,6 +120,12 @@ export class PurchaseOrdersController {
     return this.service.create(req.user.tenantId, req.user.id, dto);
   }
 
+  @Get('catalog/variants')
+  @ApiOperation({ summary: 'List active variants for purchase-order item selection' })
+  listCatalogVariants(@Request() req: any) {
+    return this.service.listCatalogVariants(req.user.tenantId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a purchase order' })
   find(@Param('id') id: string, @Request() req: any) {
@@ -133,7 +139,7 @@ export class PurchaseOrdersController {
     @Request() req: any,
     @Body() dto: UpdateStatusDto,
   ) {
-    return this.service.setStatus(id, req.user.tenantId, dto.status, req.user.id);
+    return this.service.setStatus(id, req.user.tenantId, dto.status);
   }
 
   @Post(':id/receive')

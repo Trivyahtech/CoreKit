@@ -98,8 +98,16 @@ function LoginContent() {
   };
 
   const onGoogle = () => {
-    window.location.href =
-      `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6767/api/v1"}/auth/google`;
+    const apiBase = (process.env.NEXT_PUBLIC_API_URL || "/api/v1").replace(
+      /\/$/,
+      "",
+    );
+    const authUrl = new URL(
+      `${apiBase}/auth/google`,
+      window.location.origin,
+    );
+    authUrl.searchParams.set("tenantSlug", TENANT_SLUG);
+    window.location.href = authUrl.toString();
   };
 
   const onDevAdmin = async () => {

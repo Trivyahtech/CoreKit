@@ -16,8 +16,8 @@ export class CategoriesController {
   @Roles(UserRole.ADMIN, UserRole.STAFF)
   @Post()
   @ApiOperation({ summary: 'Create a category (admin/staff only)' })
-  create(@Body() dto: CreateCategoryDto) {
-    return this.categoriesService.create(dto);
+  create(@Request() req: any, @Body() dto: CreateCategoryDto) {
+    return this.categoriesService.create(req.user.tenantId, dto);
   }
 
   @Public()

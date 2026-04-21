@@ -32,8 +32,8 @@ export class ProductsController {
   @Roles(UserRole.ADMIN, UserRole.VENDOR, UserRole.STAFF)
   @Post()
   @ApiOperation({ summary: 'Create a product (admin/vendor/staff)' })
-  create(@Body() dto: CreateProductDto) {
-    return this.productsService.create(dto);
+  create(@Request() req: any, @Body() dto: CreateProductDto) {
+    return this.productsService.create(req.user.tenantId, dto);
   }
 
   @Public()

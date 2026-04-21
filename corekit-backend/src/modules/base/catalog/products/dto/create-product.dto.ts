@@ -8,9 +8,10 @@ import {
 } from 'class-validator';
 
 export class CreateProductDto {
-  @ApiProperty({ example: 'corekit' })
+  @ApiPropertyOptional({ example: 'corekit', deprecated: true })
+  @IsOptional()
   @IsString()
-  tenantSlug: string;
+  tenantSlug?: string;
 
   @ApiProperty({ example: 'iPhone 15 Pro' })
   @IsString()

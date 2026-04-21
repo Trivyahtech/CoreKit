@@ -3,8 +3,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { Decimal } from '@prisma/client-runtime-utils';
-import { PurchaseOrderStatus, StockChangeReason } from '@prisma/client';
+import {
+  PurchaseOrderStatus,
+  StockChangeReason,
+  VariantStatus,
+} from '@prisma/client';
 import { PrismaService } from '../../../platform/database/prisma.service.js';
 import { InventoryService } from '../inventory/inventory.service.js';
 
@@ -19,6 +24,17 @@ type ReceivePoItem = {
   quantityReceived: number;
   lotNumber?: string;
   expiryAt?: string | null;
+};
+
+const PO_TRANSITIONS: Record<PurchaseOrderStatus, readonly PurchaseOrderStatus[]> = {
+  [PurchaseOrderStatus.DRAFT]: [
+    PurchaseOrderStatus.ORDERED,
+    PurchaseOrderStatus.CANCELLED,
+  ],
+  [PurchaseOrderStatus.ORDERED]: [PurchaseOrderStatus.CANCELLED],
+  [PurchaseOrderStatus.PARTIAL]: [PurchaseOrderStatus.CANCELLED],
+  [PurchaseOrderStatus.RECEIVED]: [],
+  [PurchaseOrderStatus.CANCELLED]: [],
 };
 
 @Injectable()
@@ -65,12 +81,33 @@ export class PurchaseOrdersService {
 
   // --- Purchase Orders ---
 
-  private async nextPoNumber(tenantId: string): Promise<string> {
-    const count = await this.prisma.purchaseOrder.count({ where: { tenantId } });
+  private assertTransition(from: PurchaseOrderStatus, to: PurchaseOrderStatus) {
+    if (from === to) {
+      throw new BadRequestException(`Purchase order is already in status ${to}`);
+    }
+    const allowed = PO_TRANSITIONS[from] ?? [];
+    if (!allowed.includes(to)) {
+      throw new BadRequestException(`Invalid status transition: ${from} -> ${to}`);
+    }
+  }
+
+  private async nextPoNumber(
+    tx: Parameters<Parameters<typeof this.prisma.$transaction>[0]>[0],
+    tenantId: string,
+  ): Promise<string> {
+    const newId = randomUUID();
+    const rows = await tx.$queryRaw<{ value: number }[]>`
+      INSERT INTO "Counter" ("id", "tenantId", "key", "value", "updatedAt")
+      VALUES (${newId}, ${tenantId}, 'purchase-order', 1, NOW())
+      ON CONFLICT ("tenantId", "key")
+      DO UPDATE SET "value" = "Counter"."value" + 1, "updatedAt" = NOW()
+      RETURNING "value"
+    `;
+    const seq = rows[0]?.value ?? 1;
     const now = new Date();
     const yy = String(now.getUTCFullYear()).slice(-2);
     const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
-    return `PO-${yy}${mm}-${String(count + 1).padStart(5, '0')}`;
+    return `PO-${yy}${mm}-${String(seq).padStart(5, '0')}`;
   }
 
   async list(tenantId: string, status?: PurchaseOrderStatus) {
@@ -89,6 +126,25 @@ export class PurchaseOrdersService {
         },
       },
       orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async listCatalogVariants(tenantId: string) {
+    return this.prisma.productVariant.findMany({
+      where: {
+        tenantId,
+        status: VariantStatus.ACTIVE,
+        product: { deletedAt: null },
+      },
+      select: {
+        id: true,
+        sku: true,
+        title: true,
+        product: {
+          select: { id: true, name: true },
+        },
+      },
+      orderBy: [{ createdAt: 'desc' }],
     });
   }
 
@@ -128,19 +184,13 @@ export class PurchaseOrdersService {
     if (!dto.items?.length) {
       throw new BadRequestException('Purchase order needs at least one item');
     }
-    const supplier = await this.prisma.supplier.findFirst({
-      where: { id: dto.supplierId, tenantId },
-      select: { id: true },
-    });
-    if (!supplier) throw new NotFoundException('Supplier not found');
-
-    // Verify variants exist in tenant
-    const variantIds = dto.items.map((i) => i.variantId);
-    const variantCount = await this.prisma.productVariant.count({
-      where: { id: { in: variantIds }, tenantId },
-    });
-    if (variantCount !== new Set(variantIds).size) {
-      throw new BadRequestException('One or more variants do not exist');
+    for (const item of dto.items) {
+      if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+        throw new BadRequestException('Quantity must be a positive integer');
+      }
+      if (!Number.isFinite(item.unitCost) || item.unitCost < 0) {
+        throw new BadRequestException('Unit cost must be zero or greater');
+      }
     }
 
     const subtotal = dto.items.reduce(
@@ -148,31 +198,48 @@ export class PurchaseOrdersService {
       new Decimal(0),
     );
 
-    const poNumber = await this.nextPoNumber(tenantId);
+    return this.prisma.$transaction(async (tx) => {
+      const supplier = await tx.supplier.findFirst({
+        where: { id: dto.supplierId, tenantId },
+        select: { id: true },
+      });
+      if (!supplier) throw new NotFoundException('Supplier not found');
 
-    return this.prisma.purchaseOrder.create({
-      data: {
-        tenantId,
-        supplierId: dto.supplierId,
-        poNumber,
-        status: PurchaseOrderStatus.DRAFT,
-        subtotal,
-        notes: dto.notes,
-        expectedAt: dto.expectedAt ? new Date(dto.expectedAt) : null,
-        createdById: actorUserId,
-        items: {
-          create: dto.items.map((it) => ({
-            variantId: it.variantId,
-            quantity: it.quantity,
-            unitCost: it.unitCost,
-            totalCost: new Decimal(it.unitCost).mul(it.quantity),
-          })),
+      // Verify variants exist in tenant
+      const variantIds = dto.items.map((i) => i.variantId);
+      const variantCount = await tx.productVariant.count({
+        where: { id: { in: variantIds }, tenantId },
+      });
+      if (variantCount !== new Set(variantIds).size) {
+        throw new BadRequestException('One or more variants do not exist');
+      }
+
+      const poNumber = await this.nextPoNumber(tx, tenantId);
+
+      return tx.purchaseOrder.create({
+        data: {
+          tenantId,
+          supplierId: dto.supplierId,
+          poNumber,
+          status: PurchaseOrderStatus.DRAFT,
+          subtotal,
+          notes: dto.notes,
+          expectedAt: dto.expectedAt ? new Date(dto.expectedAt) : null,
+          createdById: actorUserId,
+          items: {
+            create: dto.items.map((it) => ({
+              variantId: it.variantId,
+              quantity: it.quantity,
+              unitCost: it.unitCost,
+              totalCost: new Decimal(it.unitCost).mul(it.quantity),
+            })),
+          },
         },
-      },
-      include: {
-        supplier: true,
-        items: true,
-      },
+        include: {
+          supplier: true,
+          items: true,
+        },
+      });
     });
   }
 
@@ -180,14 +247,18 @@ export class PurchaseOrdersService {
     id: string,
     tenantId: string,
     status: PurchaseOrderStatus,
-    actorUserId?: string,
   ) {
     const po = await this.findOne(id, tenantId);
-    if (po.status === 'RECEIVED' && status !== 'RECEIVED') {
+    if (
+      status === PurchaseOrderStatus.PARTIAL ||
+      status === PurchaseOrderStatus.RECEIVED
+    ) {
       throw new BadRequestException(
-        'A fully-received PO cannot be reverted. Adjust stock via the inventory ledger.',
+        'PARTIAL and RECEIVED are managed by receiving inventory, not manual status updates',
       );
     }
+    this.assertTransition(po.status, status);
+
     return this.prisma.purchaseOrder.update({
       where: { id },
       data: { status },
@@ -201,33 +272,50 @@ export class PurchaseOrdersService {
     dto: { items: ReceivePoItem[]; note?: string },
   ) {
     const po = await this.findOne(id, tenantId);
-    if (po.status === 'CANCELLED') {
-      throw new BadRequestException('Cannot receive a cancelled PO');
+    if (
+      po.status !== PurchaseOrderStatus.ORDERED &&
+      po.status !== PurchaseOrderStatus.PARTIAL
+    ) {
+      throw new BadRequestException(
+        'Only ORDERED or PARTIAL purchase orders can be received',
+      );
     }
-    if (po.status === 'RECEIVED') {
-      throw new BadRequestException('PO is already fully received');
+    const lines = dto.items
+      .map((line) => ({
+        ...line,
+        quantityReceived: Math.floor(Number(line.quantityReceived) || 0),
+      }))
+      .filter((line) => line.quantityReceived > 0);
+    if (lines.length === 0) {
+      throw new BadRequestException('Provide at least one positive quantity to receive');
+    }
+
+    const requestedByItem = new Map<string, number>();
+    for (const line of lines) {
+      const previous = requestedByItem.get(line.itemId) ?? 0;
+      requestedByItem.set(line.itemId, previous + line.quantityReceived);
+    }
+    for (const [itemId, requestedQty] of requestedByItem.entries()) {
+      const item = po.items.find((i) => i.id === itemId);
+      if (!item) throw new BadRequestException(`Unknown PO item ${itemId}`);
+      const outstanding = item.quantity - item.received;
+      if (requestedQty > outstanding) {
+        throw new BadRequestException(
+          `Received ${requestedQty} > outstanding ${outstanding} on item ${itemId}`,
+        );
+      }
     }
 
     return this.prisma.$transaction(async (tx) => {
-      let allFullyReceived = true;
-
-      for (const line of dto.items) {
-        if (line.quantityReceived <= 0) continue;
+      for (const line of lines) {
         const item = po.items.find((i) => i.id === line.itemId);
         if (!item) throw new BadRequestException(`Unknown PO item ${line.itemId}`);
-        const outstanding = item.quantity - item.received;
-        if (line.quantityReceived > outstanding) {
-          throw new BadRequestException(
-            `Received ${line.quantityReceived} > outstanding ${outstanding} on item ${line.itemId}`,
-          );
-        }
 
         // Update the PO item
-        const updated = await tx.purchaseOrderItem.update({
+        await tx.purchaseOrderItem.update({
           where: { id: item.id },
-          data: { received: item.received + line.quantityReceived },
+          data: { received: { increment: line.quantityReceived } },
         });
-        if (updated.received < updated.quantity) allFullyReceived = false;
 
         // Create an inventory lot
         const lotNumber =
@@ -290,9 +378,8 @@ export class PurchaseOrdersService {
 
   async cancel(id: string, tenantId: string) {
     const po = await this.findOne(id, tenantId);
-    if (po.status === 'RECEIVED') {
-      throw new BadRequestException('Cannot cancel a fully-received PO');
-    }
+    this.assertTransition(po.status, PurchaseOrderStatus.CANCELLED);
+
     return this.prisma.purchaseOrder.update({
       where: { id },
       data: { status: PurchaseOrderStatus.CANCELLED },

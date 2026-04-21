@@ -7,27 +7,27 @@ import { UpdateCategoryDto } from './dto/update-category.dto.js';
 export class CategoriesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(dto: CreateCategoryDto) {
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { slug: dto.tenantSlug },
-      select: { id: true },
-    });
-
-    if (!tenant) {
-      throw new BadRequestException('Tenant not found');
-    }
-
+  async create(tenantId: string, dto: CreateCategoryDto) {
     const existing = await this.prisma.category.findUnique({
-      where: { tenantId_slug: { tenantId: tenant.id, slug: dto.slug } },
+      where: { tenantId_slug: { tenantId, slug: dto.slug } },
     });
 
     if (existing) {
       throw new BadRequestException(`Category slug "${dto.slug}" already exists`);
     }
 
+    if (dto.parentId) {
+      const parent = await this.prisma.category.findFirst({
+        where: { id: dto.parentId, tenantId },
+      });
+      if (!parent) {
+        throw new BadRequestException('Parent category not in this tenant');
+      }
+    }
+
     return this.prisma.category.create({
       data: {
-        tenantId: tenant.id,
+        tenantId,
         name: dto.name,
         slug: dto.slug,
         description: dto.description,

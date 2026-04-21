@@ -8,12 +8,48 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { randomUUID } from 'node:crypto';
 import { Decimal } from '@prisma/client-runtime-utils';
+import {
+  FulfillmentStatus,
+  OrderStatus,
+  PaymentStatus,
+  StockChangeReason,
+} from '@prisma/client';
 import { PrismaService } from '../../../platform/database/prisma.service.js';
 import { TenantsService } from '../../core/tenants/tenants.service.js';
 import { ShippingService } from '../shipping/shipping.service.js';
 import { InventoryService } from '../inventory/inventory.service.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
 import type { OrderConfirmationJob, OrderStatusJob } from '../../../platform/mail/email.processor.js';
+
+const FULFILLED_STATUSES = new Set<OrderStatus>([
+  OrderStatus.SHIPPED,
+  OrderStatus.COMPLETED,
+]);
+
+const ORDER_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
+  [OrderStatus.CREATED]: [
+    OrderStatus.CONFIRMED,
+    OrderStatus.PROCESSING,
+    OrderStatus.SHIPPED,
+    OrderStatus.COMPLETED,
+    OrderStatus.CANCELLED,
+  ],
+  [OrderStatus.CONFIRMED]: [
+    OrderStatus.PROCESSING,
+    OrderStatus.SHIPPED,
+    OrderStatus.COMPLETED,
+    OrderStatus.CANCELLED,
+  ],
+  [OrderStatus.PROCESSING]: [
+    OrderStatus.SHIPPED,
+    OrderStatus.COMPLETED,
+    OrderStatus.CANCELLED,
+  ],
+  [OrderStatus.SHIPPED]: [OrderStatus.COMPLETED],
+  [OrderStatus.COMPLETED]: [],
+  [OrderStatus.CANCELLED]: [],
+  [OrderStatus.REFUNDED]: [],
+};
 
 @Injectable()
 export class OrdersService {
@@ -26,6 +62,32 @@ export class OrdersService {
     private readonly inventory: InventoryService,
     @InjectQueue('emails') private readonly emailQueue: Queue,
   ) {}
+
+  private isFulfilled(status: OrderStatus): boolean {
+    return FULFILLED_STATUSES.has(status);
+  }
+
+  private parseTargetStatus(raw: string): OrderStatus {
+    const values = Object.values(OrderStatus) as string[];
+    if (!values.includes(raw)) {
+      throw new BadRequestException(`Unsupported order status: ${raw}`);
+    }
+    const status = raw as OrderStatus;
+    if (status === OrderStatus.REFUNDED) {
+      throw new BadRequestException('Use POST /orders/:id/refund to mark an order as refunded');
+    }
+    return status;
+  }
+
+  private assertTransition(from: OrderStatus, to: OrderStatus) {
+    if (from === to) {
+      throw new BadRequestException(`Order is already in status ${to}`);
+    }
+    const allowed = ORDER_TRANSITIONS[from] ?? [];
+    if (!allowed.includes(to)) {
+      throw new BadRequestException(`Invalid status transition: ${from} -> ${to}`);
+    }
+  }
 
   private async nextOrderNumber(
     tx: Parameters<Parameters<typeof this.prisma.$transaction>[0]>[0],
@@ -152,7 +214,7 @@ export class OrdersService {
           tenantId,
           variantId: item.variantId,
           change: 0,
-          reason: 'ORDER_PLACED' as any,
+          reason: StockChangeReason.ORDER_PLACED,
           refType: 'Order',
           refId: undefined, // orderId not yet known; filled below
           note: `Reserved ${item.quantity} for ${userId}`,
@@ -370,23 +432,36 @@ export class OrdersService {
 
     const captured = order.payments.find((p) => p.status === 'CAPTURED');
 
+    const wasFulfilled = this.isFulfilled(order.status);
+
     const result = await this.prisma.$transaction(async (tx) => {
-      // Release reserved stock and reverse completed stock if needed
+      // If the order had already consumed physical stock (SHIPPED/COMPLETED),
+      // refund must restore stock and put units back into lot availability.
+      // Otherwise, just release reservation.
       for (const item of order.items) {
         if (!item.variantId) continue;
-        const variant = await tx.productVariant.findUnique({ where: { id: item.variantId } });
-        if (!variant) continue;
 
-        if (order.status === 'COMPLETED') {
+        if (wasFulfilled) {
           await tx.productVariant.update({
             where: { id: item.variantId },
             data: { stockOnHand: { increment: item.quantity } },
+          });
+          await tx.inventoryLot.create({
+            data: {
+              tenantId,
+              variantId: item.variantId,
+              lotNumber: `RET-${order.orderNumber}-${item.id.slice(-6)}`,
+              quantity: item.quantity,
+              remaining: item.quantity,
+              unitCost: item.unitPrice,
+              notes: note ?? `Refund restock for order ${order.orderNumber}`,
+            },
           });
           await this.inventory.record(tx, {
             tenantId,
             variantId: item.variantId,
             change: item.quantity,
-            reason: 'ORDER_REFUNDED' as any,
+            reason: StockChangeReason.ORDER_REFUNDED,
             refType: 'Order',
             refId: orderId,
             note: note ?? 'Refund — stock returned',
@@ -401,7 +476,7 @@ export class OrdersService {
             tenantId,
             variantId: item.variantId,
             change: 0,
-            reason: 'ORDER_REFUNDED' as any,
+            reason: StockChangeReason.ORDER_REFUNDED,
             refType: 'Order',
             refId: orderId,
             note: note ?? 'Refund — reservation released',
@@ -429,7 +504,13 @@ export class OrdersService {
 
       return tx.order.update({
         where: { id: orderId },
-        data: { status: 'REFUNDED', paymentStatus: 'REFUNDED' },
+        data: {
+          status: OrderStatus.REFUNDED,
+          paymentStatus: PaymentStatus.REFUNDED,
+          fulfillmentStatus: wasFulfilled
+            ? FulfillmentStatus.RETURNED
+            : FulfillmentStatus.PENDING,
+        },
         include: { statusLogs: { orderBy: { createdAt: 'asc' } }, payments: true },
       });
     });
@@ -483,7 +564,7 @@ export class OrdersService {
           tenantId,
           variantId: item.variantId,
           change: 0,
-          reason: 'ORDER_CANCELLED' as any,
+          reason: StockChangeReason.ORDER_CANCELLED,
           refType: 'Order',
           refId: orderId,
           note: reason ?? 'Customer cancelled',
@@ -506,9 +587,12 @@ export class OrdersService {
       return tx.order.update({
         where: { id: orderId },
         data: {
-          status: 'CANCELLED',
+          status: OrderStatus.CANCELLED,
           paymentStatus:
-            order.paymentStatus === 'CAPTURED' ? 'REFUNDED' : order.paymentStatus,
+            order.paymentStatus === PaymentStatus.CAPTURED
+              ? PaymentStatus.REFUNDED
+              : order.paymentStatus,
+          fulfillmentStatus: FulfillmentStatus.PENDING,
         },
         include: { items: true, statusLogs: { orderBy: { createdAt: 'asc' } }, payments: true },
       });
@@ -535,7 +619,7 @@ export class OrdersService {
   async updateStatus(
     orderId: string,
     tenantId: string,
-    newStatus: string,
+    newStatusRaw: string,
     note?: string,
     updatedByUserId?: string,
   ) {
@@ -545,18 +629,23 @@ export class OrdersService {
     });
     if (!order) throw new NotFoundException('Order not found');
 
+    const newStatus = this.parseTargetStatus(newStatusRaw);
+    this.assertTransition(order.status, newStatus);
+    const wasFulfilled = this.isFulfilled(order.status);
+    const willBeFulfilled = this.isFulfilled(newStatus);
+
     const updatedOrder = await this.prisma.$transaction(async (tx) => {
       await tx.orderStatusLog.create({
         data: {
           orderId,
           fromStatus: order.status,
-          toStatus: newStatus as any,
+          toStatus: newStatus,
           note,
           createdByUserId: updatedByUserId,
         },
       });
 
-      if (newStatus === 'CANCELLED') {
+      if (newStatus === OrderStatus.CANCELLED) {
         const items = await tx.orderItem.findMany({ where: { orderId } });
         for (const item of items) {
           if (item.variantId) {
@@ -568,7 +657,7 @@ export class OrdersService {
               tenantId,
               variantId: item.variantId,
               change: 0,
-              reason: 'ORDER_CANCELLED' as any,
+              reason: StockChangeReason.ORDER_CANCELLED,
               refType: 'Order',
               refId: orderId,
               note: note ?? 'Cancelled by admin',
@@ -578,7 +667,7 @@ export class OrdersService {
         }
       }
 
-      if (newStatus === 'COMPLETED' || newStatus === 'SHIPPED') {
+      if (!wasFulfilled && willBeFulfilled) {
         const items = await tx.orderItem.findMany({ where: { orderId } });
         for (const item of items) {
           if (item.variantId) {
@@ -599,7 +688,7 @@ export class OrdersService {
               tenantId,
               variantId: item.variantId,
               change: -item.quantity,
-              reason: 'ORDER_PLACED' as any,
+              reason: StockChangeReason.ORDER_PLACED,
               refType: 'Order',
               refId: orderId,
               note: note ?? `Fulfilled order (${newStatus})`,
@@ -609,9 +698,21 @@ export class OrdersService {
         }
       }
 
+      const data: {
+        status: OrderStatus;
+        fulfillmentStatus?: FulfillmentStatus;
+      } = {
+        status: newStatus,
+      };
+      if (willBeFulfilled) {
+        data.fulfillmentStatus = FulfillmentStatus.FULFILLED;
+      } else if (newStatus === OrderStatus.CANCELLED) {
+        data.fulfillmentStatus = FulfillmentStatus.PENDING;
+      }
+
       return tx.order.update({
         where: { id: orderId },
-        data: { status: newStatus as any },
+        data,
         include: { statusLogs: { orderBy: { createdAt: 'asc' } } },
       });
     });

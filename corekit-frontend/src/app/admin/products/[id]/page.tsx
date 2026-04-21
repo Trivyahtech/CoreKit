@@ -78,7 +78,7 @@ export default function AdminProductEditPage() {
     refetch,
   } = useQuery<Product>({
     queryKey: ["admin-product", productId],
-    queryFn: () => api.get(`/products/${productId}?tenant=${TENANT_SLUG}`),
+    queryFn: () => api.get(`/products/admin/${productId}`),
     enabled: !!productId,
   });
 

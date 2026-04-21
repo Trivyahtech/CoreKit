@@ -14,6 +14,7 @@ export interface TenantConfig {
   timezone: string;
   taxRate: Decimal;
   shippingEnabled: boolean;
+  codEnabled: boolean;
   freeShippingThreshold: Decimal | null;
 }
 
@@ -55,6 +56,7 @@ export class TenantsService {
       timezone: tenant.timezone,
       taxRate: String(settings.taxRate ?? DEFAULT_TAX_RATE.toString()),
       shippingEnabled: settings.shippingEnabled !== false,
+      codEnabled: settings.codEnabled !== false,
       freeShippingThreshold:
         settings.freeShippingThreshold != null
           ? String(settings.freeShippingThreshold)
@@ -168,6 +170,7 @@ export class TenantsService {
       timezone: raw.timezone,
       taxRate: new Decimal(raw.taxRate),
       shippingEnabled: raw.shippingEnabled,
+      codEnabled: raw.codEnabled,
       freeShippingThreshold:
         raw.freeShippingThreshold != null ? new Decimal(raw.freeShippingThreshold) : null,
     };
@@ -182,5 +185,6 @@ interface TenantConfigWire {
   timezone: string;
   taxRate: string;
   shippingEnabled: boolean;
+  codEnabled: boolean;
   freeShippingThreshold: string | null;
 }

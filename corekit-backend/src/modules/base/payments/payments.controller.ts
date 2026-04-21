@@ -11,7 +11,7 @@ import {
   HttpCode,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { ConfigService } from '@nestjs/config';
+import { UserRole } from '@prisma/client';
 import { Public } from '../../../common/decorators/public.decorator.js';
 import { PaymentsService } from './payments.service.js';
 import { CreatePaymentDto } from './dto/create-payment.dto.js';
@@ -20,27 +20,13 @@ import { VerifyPaymentDto } from './dto/update-payment.dto.js';
 @ApiTags('Payments')
 @Controller('payments')
 export class PaymentsController {
-  constructor(
-    private readonly paymentsService: PaymentsService,
-    private readonly config: ConfigService,
-  ) {}
+  constructor(private readonly paymentsService: PaymentsService) {}
 
-  @Public()
+  @ApiBearerAuth()
   @Get('providers')
   @ApiOperation({ summary: 'List the payment providers the tenant has configured' })
-  providers() {
-    const razorpayKeyId = this.config.get<string>('payments.razorpayKeyId');
-    const razorpaySecret = this.config.get<string>('payments.razorpayKeySecret');
-    return {
-      providers: [
-        { id: 'COD', name: 'Cash on Delivery', enabled: true },
-        {
-          id: 'RAZORPAY',
-          name: 'Online payment (Razorpay)',
-          enabled: !!(razorpayKeyId && razorpaySecret),
-        },
-      ],
-    };
+  providers(@Request() req: any) {
+    return this.paymentsService.listProviders(req.user.tenantId);
   }
 
   @ApiBearerAuth()
@@ -80,7 +66,11 @@ export class PaymentsController {
   @ApiBearerAuth()
   @Get(':id')
   @ApiOperation({ summary: 'Get payment details' })
-  findOne(@Param('id') id: string) {
-    return this.paymentsService.findOne(id);
+  findOne(@Param('id') id: string, @Request() req: any) {
+    const allTenantPayments =
+      req.user.role === UserRole.ADMIN || req.user.role === UserRole.STAFF;
+    return this.paymentsService.findOne(id, req.user.id, req.user.tenantId, {
+      allTenantPayments,
+    });
   }
 }

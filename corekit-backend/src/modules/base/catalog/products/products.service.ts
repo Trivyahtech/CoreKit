@@ -17,27 +17,27 @@ export class ProductsService {
     private readonly storage: StorageService,
   ) {}
 
-  async create(dto: CreateProductDto) {
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { slug: dto.tenantSlug },
-      select: { id: true },
-    });
-
-    if (!tenant) {
-      throw new BadRequestException('Tenant not found');
-    }
-
+  async create(tenantId: string, dto: CreateProductDto) {
     const existing = await this.prisma.product.findUnique({
-      where: { tenantId_slug: { tenantId: tenant.id, slug: dto.slug } },
+      where: { tenantId_slug: { tenantId, slug: dto.slug } },
     });
 
     if (existing) {
       throw new BadRequestException(`Product slug "${dto.slug}" already exists`);
     }
 
+    if (dto.categoryIds?.length) {
+      const valid = await this.prisma.category.count({
+        where: { id: { in: dto.categoryIds }, tenantId },
+      });
+      if (valid !== dto.categoryIds.length) {
+        throw new BadRequestException('One or more categories do not belong to this tenant');
+      }
+    }
+
     return this.prisma.product.create({
       data: {
-        tenantId: tenant.id,
+        tenantId,
         name: dto.name,
         slug: dto.slug,
         shortDescription: dto.shortDescription,
