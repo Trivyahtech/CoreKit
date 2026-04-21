@@ -2,16 +2,75 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  UnauthorizedException,
+  InternalServerErrorException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import * as crypto from 'crypto';
 import { PrismaService } from '../../../platform/database/prisma.service.js';
+import { TenantsService } from '../../core/tenants/tenants.service.js';
 import { CreatePaymentDto } from './dto/create-payment.dto.js';
 import { VerifyPaymentDto } from './dto/update-payment.dto.js';
 
 @Injectable()
 export class PaymentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+    private readonly tenants: TenantsService,
+  ) {}
+
+  private isRazorpayEnabled(): boolean {
+    const razorpayKeyId = this.config.get<string>('payments.razorpayKeyId');
+    const razorpaySecret = this.config.get<string>('payments.razorpayKeySecret');
+    return !!(razorpayKeyId && razorpaySecret);
+  }
+
+  async listProviders(tenantId: string) {
+    const tenantConfig = await this.tenants.getConfig(tenantId);
+    return {
+      providers: [
+        { id: 'COD', name: 'Cash on Delivery', enabled: tenantConfig.codEnabled },
+        {
+          id: 'RAZORPAY',
+          name: 'Online payment (Razorpay)',
+          enabled: this.isRazorpayEnabled(),
+        },
+      ],
+    };
+  }
+
+  private verifyRazorpaySignature(
+    gatewayOrderId: string,
+    gatewayPaymentId: string,
+    signature: string,
+  ): boolean {
+    const secret = this.config.get<string>('payments.razorpayKeySecret');
+    if (!secret) {
+      throw new InternalServerErrorException('Razorpay secret not configured');
+    }
+    const expected = crypto
+      .createHmac('sha256', secret)
+      .update(`${gatewayOrderId}|${gatewayPaymentId}`)
+      .digest('hex');
+    const a = Buffer.from(expected);
+    const b = Buffer.from(signature);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  }
+
+  private verifyRazorpayWebhookSignature(rawBody: string, signature: string): boolean {
+    const secret = this.config.get<string>('payments.razorpayWebhookSecret');
+    if (!secret) {
+      throw new InternalServerErrorException('Razorpay webhook secret not configured');
+    }
+    const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+    const a = Buffer.from(expected);
+    const b = Buffer.from(signature);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  }
 
   async initiate(userId: string, tenantId: string, dto: CreatePaymentDto) {
+    const tenantConfig = await this.tenants.getConfig(tenantId);
     const order = await this.prisma.order.findFirst({
       where: { id: dto.orderId, userId, tenantId },
     });
@@ -23,6 +82,9 @@ export class PaymentsService {
     }
 
     if (dto.provider === 'COD') {
+      if (!tenantConfig.codEnabled) {
+        throw new BadRequestException('Cash on delivery is disabled for this tenant');
+      }
       // COD: mark payment as authorized immediately
       const payment = await this.prisma.payment.create({
         data: {
@@ -56,6 +118,10 @@ export class PaymentsService {
       return payment;
     }
 
+    if (dto.provider === 'RAZORPAY' && !this.isRazorpayEnabled()) {
+      throw new BadRequestException('Razorpay is not configured');
+    }
+
     // Online payment (Razorpay placeholder)
     // In production, you'd call Razorpay's Orders API here
     const gatewayOrderId = `gw_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;
@@ -85,9 +151,14 @@ export class PaymentsService {
     };
   }
 
-  async verify(paymentId: string, dto: VerifyPaymentDto) {
-    const payment = await this.prisma.payment.findUnique({
-      where: { id: paymentId },
+  async verify(
+    paymentId: string,
+    dto: VerifyPaymentDto,
+    userId: string,
+    tenantId: string,
+  ) {
+    const payment = await this.prisma.payment.findFirst({
+      where: { id: paymentId, tenantId, order: { userId } },
       include: { order: true },
     });
 
@@ -97,36 +168,84 @@ export class PaymentsService {
       throw new BadRequestException('Payment already captured');
     }
 
-    // In production, verify signature with Razorpay:
-    // const isValid = razorpay.validatePaymentVerification(...)
-    // For now, we trust the gateway payment ID
+    if (payment.provider === 'RAZORPAY') {
+      if (!payment.gatewayOrderId) {
+        throw new BadRequestException('Payment missing gateway order id');
+      }
+      if (!dto.gatewaySignature) {
+        throw new UnauthorizedException('Gateway signature required');
+      }
+      const valid = this.verifyRazorpaySignature(
+        payment.gatewayOrderId,
+        dto.gatewayPaymentId,
+        dto.gatewaySignature,
+      );
+      if (!valid) throw new UnauthorizedException('Invalid payment signature');
+    }
 
-    const updatedPayment = await this.prisma.payment.update({
-      where: { id: paymentId },
-      data: {
-        gatewayPaymentId: dto.gatewayPaymentId,
-        gatewaySignature: dto.gatewaySignature,
-        status: 'CAPTURED',
-        processedAt: new Date(),
-      },
+    return this.capturePayment(payment, dto.gatewayPaymentId, dto.gatewaySignature);
+  }
+
+  async handleRazorpayWebhook(rawBody: string, signature: string | undefined) {
+    if (!signature || !this.verifyRazorpayWebhookSignature(rawBody, signature)) {
+      throw new UnauthorizedException('Invalid webhook signature');
+    }
+
+    const event = JSON.parse(rawBody);
+    if (event?.event !== 'payment.captured') {
+      return { received: true };
+    }
+
+    const entity = event?.payload?.payment?.entity;
+    const gatewayOrderId: string | undefined = entity?.order_id;
+    const gatewayPaymentId: string | undefined = entity?.id;
+    if (!gatewayOrderId || !gatewayPaymentId) {
+      throw new BadRequestException('Malformed webhook payload');
+    }
+
+    const payment = await this.prisma.payment.findFirst({
+      where: { gatewayOrderId },
+      include: { order: true },
     });
+    if (!payment) throw new NotFoundException('Payment not found');
+    if (payment.status === 'CAPTURED') return { received: true };
 
-    // Update order
-    await this.prisma.order.update({
-      where: { id: payment.orderId },
-      data: { paymentStatus: 'CAPTURED', status: 'CONFIRMED' },
+    await this.capturePayment(payment, gatewayPaymentId, undefined);
+    return { received: true };
+  }
+
+  private async capturePayment(
+    payment: { id: string; orderId: string; order: { status: any } },
+    gatewayPaymentId: string,
+    gatewaySignature: string | undefined,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const updatedPayment = await tx.payment.update({
+        where: { id: payment.id },
+        data: {
+          gatewayPaymentId,
+          gatewaySignature: gatewaySignature ?? null,
+          status: 'CAPTURED',
+          processedAt: new Date(),
+        },
+      });
+
+      await tx.order.update({
+        where: { id: payment.orderId },
+        data: { paymentStatus: 'CAPTURED', status: 'CONFIRMED' },
+      });
+
+      await tx.orderStatusLog.create({
+        data: {
+          orderId: payment.orderId,
+          fromStatus: payment.order.status,
+          toStatus: 'CONFIRMED',
+          note: `Payment captured: ${gatewayPaymentId}`,
+        },
+      });
+
+      return updatedPayment;
     });
-
-    await this.prisma.orderStatusLog.create({
-      data: {
-        orderId: payment.orderId,
-        fromStatus: payment.order.status,
-        toStatus: 'CONFIRMED',
-        note: `Payment captured: ${dto.gatewayPaymentId}`,
-      },
-    });
-
-    return updatedPayment;
   }
 
   async findByOrder(orderId: string, userId: string) {
@@ -141,9 +260,16 @@ export class PaymentsService {
     });
   }
 
-  async findOne(id: string) {
-    const payment = await this.prisma.payment.findUnique({
-      where: { id },
+  async findOne(
+    id: string,
+    userId: string,
+    tenantId: string,
+    opts: { allTenantPayments?: boolean } = {},
+  ) {
+    const payment = await this.prisma.payment.findFirst({
+      where: opts.allTenantPayments
+        ? { id, tenantId }
+        : { id, tenantId, order: { userId } },
       include: {
         order: {
           select: { id: true, orderNumber: true, status: true, grandTotal: true },

@@ -1,13 +1,16 @@
 // --- Guards ---
 export { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 export { RolesGuard } from './guards/roles.guard.js';
+export { PermissionsGuard } from './guards/permissions.guard.js';
 
 // --- Decorators ---
 export { Public } from './decorators/public.decorator.js';
 export { Roles } from './decorators/roles.decorator.js';
+export { RequirePermissions } from './decorators/permissions.decorator.js';
+export { CurrentUser, CurrentTenant } from './decorators/current-user.decorator.js';
 
 // --- Constants ---
-export { IS_PUBLIC_KEY, ROLES_KEY } from './constants/metadata.constants.js';
+export { IS_PUBLIC_KEY, ROLES_KEY, PERMISSIONS_KEY } from './constants/metadata.constants.js';
 
 // --- Interceptors ---
 export { TransformInterceptor } from './interceptors/transform.interceptor.js';

@@ -1,55 +1,82 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { api } from "@/platform/api/client";
 import Link from "next/link";
-import { Folder } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Folder, ShoppingBag } from "lucide-react";
+import { api, TENANT_SLUG } from "@/platform/api/client";
+import { Skeleton } from "@/common/components/ui/Skeleton";
+import { EmptyState, ErrorState } from "@/common/components/ui/States";
+
+type Category = {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+};
 
 export default function CategoriesPage() {
-  const { data: categories, isLoading } = useQuery({
+  const {
+    data: categories,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery<Category[]>({
     queryKey: ["categories"],
-    queryFn: () => api.get("/categories?tenant=corekit"),
+    queryFn: () => api.get(`/categories?tenant=${TENANT_SLUG}`),
   });
 
   return (
-    <div className="pt-8 pb-16">
-      <div className="flex items-center justify-between border-b border-gray-200 pb-6 mb-8">
-        <h1 className="text-3xl font-bold tracking-tight text-gray-900">
-          All Categories
+    <div>
+      <div className="pb-6 border-b border-card-border">
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+          All categories
         </h1>
+        <p className="mt-1 text-sm text-muted">
+          Browse our collections by category.
+        </p>
       </div>
 
-      {isLoading ? (
-        <div className="flex justify-center py-20">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-        </div>
-      ) : categories?.length === 0 ? (
-        <div className="text-center py-20 bg-gray-50 rounded-xl border border-gray-200 border-dashed">
-          <Folder className="mx-auto h-12 w-12 text-gray-300" />
-          <h3 className="mt-2 text-sm font-semibold text-gray-900">No categories</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            Check back later for new product categories.
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-y-6 sm:grid-cols-2 sm:gap-x-6 lg:grid-cols-3 xl:gap-x-8">
-          {categories?.map((category: any) => (
-            <Link
-              key={category.id}
-              href={`/products?category=${category.slug}`}
-              className="group relative flex flex-col justify-end overflow-hidden rounded-2xl bg-gray-100 px-8 pb-8 pt-40 border border-gray-200 hover:border-indigo-400 transition-colors"
-            >
-              <div className="absolute inset-0 bg-gradient-to-t from-gray-900/80 to-transparent group-hover:from-indigo-900/90 transition-colors" />
-              <h3 className="relative text-2xl font-bold text-white tracking-tight">
-                {category.name}
-              </h3>
-              <p className="relative mt-2 text-sm text-gray-300 group-hover:text-white transition-colors">
-                Explore {category.name}
-              </p>
-            </Link>
-          ))}
-        </div>
-      )}
+      <div className="pt-6">
+        {isLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="aspect-[4/3] rounded-2xl" />
+            ))}
+          </div>
+        ) : isError ? (
+          <ErrorState onRetry={() => refetch()} />
+        ) : !categories || categories.length === 0 ? (
+          <EmptyState
+            icon={Folder}
+            title="No categories"
+            description="Categories will appear here once products are added."
+          />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {categories.map((c) => (
+              <Link
+                key={c.id}
+                href={`/products?category=${c.slug}`}
+                className="group relative aspect-[4/3] rounded-2xl overflow-hidden border border-card-border bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/5 flex items-end p-6 hover:border-accent/50 hover:shadow-md transition-all"
+              >
+                <div className="absolute top-5 right-5 h-10 w-10 rounded-full bg-card-bg/80 backdrop-blur flex items-center justify-center">
+                  <ShoppingBag className="h-5 w-5 text-accent" aria-hidden />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-foreground group-hover:text-accent transition-colors">
+                    {c.name}
+                  </h3>
+                  {c.description && (
+                    <p className="mt-1 text-sm text-muted line-clamp-2">
+                      {c.description}
+                    </p>
+                  )}
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

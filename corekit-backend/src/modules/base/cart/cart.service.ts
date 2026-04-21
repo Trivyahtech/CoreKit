@@ -5,11 +5,15 @@ import {
 } from '@nestjs/common';
 import { Decimal } from '@prisma/client-runtime-utils';
 import { PrismaService } from '../../../platform/database/prisma.service.js';
+import { TenantsService } from '../../core/tenants/tenants.service.js';
 import { AddCartItemDto } from './dto/create-cart.dto.js';
 
 @Injectable()
 export class CartService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tenants: TenantsService,
+  ) {}
 
   /** Get or create the user's active cart */
   private async getOrCreateCart(userId: string, tenantId: string) {
@@ -19,7 +23,7 @@ export class CartService {
         items: {
           include: {
             product: { select: { id: true, name: true, slug: true } },
-            variant: { select: { id: true, sku: true, title: true, price: true, stockOnHand: true, status: true } },
+            variant: { select: { id: true, sku: true, title: true, price: true, stockOnHand: true, status: true, weightGrams: true } },
           },
           orderBy: { createdAt: 'asc' },
         },
@@ -33,7 +37,7 @@ export class CartService {
           items: {
             include: {
               product: { select: { id: true, name: true, slug: true } },
-              variant: { select: { id: true, sku: true, title: true, price: true, stockOnHand: true, status: true } },
+              variant: { select: { id: true, sku: true, title: true, price: true, stockOnHand: true, status: true, weightGrams: true } },
             },
           },
         },
@@ -44,16 +48,18 @@ export class CartService {
   }
 
   /** Recalculate cart totals from items */
-  private async recalculateTotals(cartId: string) {
-    const items = await this.prisma.cartItem.findMany({ where: { cartId } });
+  private async recalculateTotals(cartId: string, tenantId: string) {
+    const [items, config] = await Promise.all([
+      this.prisma.cartItem.findMany({ where: { cartId } }),
+      this.tenants.getConfig(tenantId),
+    ]);
 
     const subtotal = items.reduce(
       (sum, item) => sum.add(item.totalPrice),
       new Decimal(0),
     );
 
-    // Simple tax calculation (18% GST as default)
-    const taxAmount = subtotal.mul(new Decimal(0.18));
+    const taxAmount = subtotal.mul(config.taxRate);
     const grandTotal = subtotal.add(taxAmount);
 
     return this.prisma.cart.update({
@@ -69,7 +75,7 @@ export class CartService {
         items: {
           include: {
             product: { select: { id: true, name: true, slug: true } },
-            variant: { select: { id: true, sku: true, title: true, price: true, stockOnHand: true } },
+            variant: { select: { id: true, sku: true, title: true, price: true, stockOnHand: true, weightGrams: true } },
           },
           orderBy: { createdAt: 'asc' },
         },
@@ -141,19 +147,19 @@ export class CartService {
       });
     }
 
-    return this.recalculateTotals(cart.id);
+    return this.recalculateTotals(cart.id, tenantId);
   }
 
-  async updateItemQuantity(userId: string, itemId: string, quantity: number) {
+  async updateItemQuantity(userId: string, tenantId: string, itemId: string, quantity: number) {
     const item = await this.prisma.cartItem.findUnique({
       where: { id: itemId },
       include: {
-        cart: { select: { userId: true } },
+        cart: { select: { userId: true, tenantId: true } },
         variant: { select: { price: true, stockOnHand: true, reservedStock: true } },
       },
     });
 
-    if (!item || item.cart.userId !== userId) {
+    if (!item || item.cart.userId !== userId || item.cart.tenantId !== tenantId) {
       throw new NotFoundException('Cart item not found');
     }
 
@@ -170,21 +176,21 @@ export class CartService {
       },
     });
 
-    return this.recalculateTotals(item.cartId);
+    return this.recalculateTotals(item.cartId, tenantId);
   }
 
-  async removeItem(userId: string, itemId: string) {
+  async removeItem(userId: string, tenantId: string, itemId: string) {
     const item = await this.prisma.cartItem.findUnique({
       where: { id: itemId },
-      include: { cart: { select: { id: true, userId: true } } },
+      include: { cart: { select: { id: true, userId: true, tenantId: true } } },
     });
 
-    if (!item || item.cart.userId !== userId) {
+    if (!item || item.cart.userId !== userId || item.cart.tenantId !== tenantId) {
       throw new NotFoundException('Cart item not found');
     }
 
     await this.prisma.cartItem.delete({ where: { id: itemId } });
-    return this.recalculateTotals(item.cart.id);
+    return this.recalculateTotals(item.cart.id, tenantId);
   }
 
   async clearCart(userId: string, tenantId: string) {
@@ -195,7 +201,7 @@ export class CartService {
     if (!cart) throw new NotFoundException('No active cart');
 
     await this.prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
-    return this.recalculateTotals(cart.id);
+    return this.recalculateTotals(cart.id, tenantId);
   }
 
   async applyCoupon(userId: string, tenantId: string, couponCode: string) {
@@ -226,8 +232,12 @@ export class CartService {
     if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) {
       throw new BadRequestException('Coupon usage limit reached');
     }
+    const config = await this.tenants.getConfig(tenantId);
+
     if (coupon.minCartValue && cart.subtotal.lessThan(coupon.minCartValue)) {
-      throw new BadRequestException(`Minimum cart value of ₹${coupon.minCartValue} required`);
+      throw new BadRequestException(
+        `Minimum cart value of ${config.currencyCode} ${coupon.minCartValue} required`,
+      );
     }
 
     let discount: Decimal;

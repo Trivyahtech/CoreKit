@@ -6,10 +6,50 @@ import {
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { randomUUID } from 'node:crypto';
 import { Decimal } from '@prisma/client-runtime-utils';
+import {
+  FulfillmentStatus,
+  OrderStatus,
+  PaymentStatus,
+  StockChangeReason,
+} from '@prisma/client';
 import { PrismaService } from '../../../platform/database/prisma.service.js';
+import { TenantsService } from '../../core/tenants/tenants.service.js';
+import { ShippingService } from '../shipping/shipping.service.js';
+import { InventoryService } from '../inventory/inventory.service.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
 import type { OrderConfirmationJob, OrderStatusJob } from '../../../platform/mail/email.processor.js';
+
+const FULFILLED_STATUSES = new Set<OrderStatus>([
+  OrderStatus.SHIPPED,
+  OrderStatus.COMPLETED,
+]);
+
+const ORDER_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
+  [OrderStatus.CREATED]: [
+    OrderStatus.CONFIRMED,
+    OrderStatus.PROCESSING,
+    OrderStatus.SHIPPED,
+    OrderStatus.COMPLETED,
+    OrderStatus.CANCELLED,
+  ],
+  [OrderStatus.CONFIRMED]: [
+    OrderStatus.PROCESSING,
+    OrderStatus.SHIPPED,
+    OrderStatus.COMPLETED,
+    OrderStatus.CANCELLED,
+  ],
+  [OrderStatus.PROCESSING]: [
+    OrderStatus.SHIPPED,
+    OrderStatus.COMPLETED,
+    OrderStatus.CANCELLED,
+  ],
+  [OrderStatus.SHIPPED]: [OrderStatus.COMPLETED],
+  [OrderStatus.COMPLETED]: [],
+  [OrderStatus.CANCELLED]: [],
+  [OrderStatus.REFUNDED]: [],
+};
 
 @Injectable()
 export class OrdersService {
@@ -17,16 +57,60 @@ export class OrdersService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly tenants: TenantsService,
+    private readonly shipping: ShippingService,
+    private readonly inventory: InventoryService,
     @InjectQueue('emails') private readonly emailQueue: Queue,
   ) {}
 
-  private generateOrderNumber(): string {
-    const timestamp = Date.now().toString(36).toUpperCase();
-    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-    return `ORD-${timestamp}-${random}`;
+  private isFulfilled(status: OrderStatus): boolean {
+    return FULFILLED_STATUSES.has(status);
+  }
+
+  private parseTargetStatus(raw: string): OrderStatus {
+    const values = Object.values(OrderStatus) as string[];
+    if (!values.includes(raw)) {
+      throw new BadRequestException(`Unsupported order status: ${raw}`);
+    }
+    const status = raw as OrderStatus;
+    if (status === OrderStatus.REFUNDED) {
+      throw new BadRequestException('Use POST /orders/:id/refund to mark an order as refunded');
+    }
+    return status;
+  }
+
+  private assertTransition(from: OrderStatus, to: OrderStatus) {
+    if (from === to) {
+      throw new BadRequestException(`Order is already in status ${to}`);
+    }
+    const allowed = ORDER_TRANSITIONS[from] ?? [];
+    if (!allowed.includes(to)) {
+      throw new BadRequestException(`Invalid status transition: ${from} -> ${to}`);
+    }
+  }
+
+  private async nextOrderNumber(
+    tx: Parameters<Parameters<typeof this.prisma.$transaction>[0]>[0],
+    tenantId: string,
+  ): Promise<string> {
+    const newId = randomUUID();
+    const rows = await tx.$queryRaw<{ value: number }[]>`
+      INSERT INTO "Counter" ("id", "tenantId", "key", "value", "updatedAt")
+      VALUES (${newId}, ${tenantId}, 'order', 1, NOW())
+      ON CONFLICT ("tenantId", "key")
+      DO UPDATE SET "value" = "Counter"."value" + 1, "updatedAt" = NOW()
+      RETURNING "value"
+    `;
+    const seq = rows[0]?.value ?? 1;
+    const now = new Date();
+    const yy = now.getUTCFullYear().toString().slice(-2);
+    const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
+    return `ORD-${yy}${mm}-${seq.toString().padStart(6, '0')}`;
   }
 
   async createFromCart(userId: string, tenantId: string, dto: CreateOrderDto) {
+    const config = await this.tenants.getConfig(tenantId);
+
     // 1. Get active cart with items
     const cart = await this.prisma.cart.findFirst({
       where: { userId, tenantId, status: 'ACTIVE' },
@@ -43,10 +127,10 @@ export class OrdersService {
       throw new BadRequestException('Cart is empty');
     }
 
-    // 2. Validate and snapshot addresses
+    // 2. Validate and snapshot addresses (tenant-scoped)
     const [billingAddr, shippingAddr] = await Promise.all([
-      this.prisma.address.findFirst({ where: { id: dto.billingAddressId, userId } }),
-      this.prisma.address.findFirst({ where: { id: dto.shippingAddressId, userId } }),
+      this.prisma.address.findFirst({ where: { id: dto.billingAddressId, userId, tenantId } }),
+      this.prisma.address.findFirst({ where: { id: dto.shippingAddressId, userId, tenantId } }),
     ]);
 
     if (!billingAddr) throw new BadRequestException('Billing address not found');
@@ -68,8 +152,50 @@ export class OrdersService {
       }
     }
 
+    // 4a. Resolve shipping cost if a rule was chosen
+    let shippingAmount = cart.shippingAmount;
+    if (dto.shippingRuleId) {
+      const quotes = await this.shipping.quote(tenantId, {
+        pincode: shippingAddr.pincode,
+        weightGrams: dto.weightGrams ?? 0,
+        orderValue: cart.subtotal.toNumber(),
+      });
+      const chosen = quotes.find((q) => q.ruleId === dto.shippingRuleId);
+      if (!chosen) {
+        throw new BadRequestException('Chosen shipping method is not available for this order');
+      }
+      shippingAmount = new Decimal(chosen.cost);
+    } else if (config.shippingEnabled) {
+      // Fallback: if shipping is enabled but client didn't choose, require it
+      throw new BadRequestException(
+        'shippingRuleId required (call POST /shipping/quote first)',
+      );
+    }
+
+    const taxAmount = cart.taxAmount;
+    const grandTotal = cart.subtotal
+      .add(taxAmount)
+      .add(shippingAmount)
+      .sub(cart.discountAmount);
+
     // 5. Create order in a transaction
     const order = await this.prisma.$transaction(async (tx) => {
+      if (dto.couponCode) {
+        const rows = await tx.$executeRaw`
+          UPDATE "Coupon"
+          SET "usedCount" = "usedCount" + 1
+          WHERE "tenantId" = ${tenantId}
+            AND "code" = ${dto.couponCode.toUpperCase()}
+            AND "isActive" = true
+            AND ("startsAt" IS NULL OR "startsAt" <= NOW())
+            AND ("endsAt" IS NULL OR "endsAt" >= NOW())
+            AND ("usageLimit" IS NULL OR "usedCount" < "usageLimit")
+        `;
+        if (rows === 0) {
+          throw new BadRequestException('Coupon is no longer valid or usage limit reached');
+        }
+      }
+
       for (const item of cart.items) {
         await tx.productVariant.update({
           where: { id: item.variantId },
@@ -77,19 +203,39 @@ export class OrdersService {
         });
       }
 
+      const orderNumber = await this.nextOrderNumber(tx, tenantId);
+
+      // Audit: reserve now, physically decrement at ship (below).
+      // We still record ORDER_PLACED with change=0 so the ledger shows
+      // which customer committed this stock.
+      for (const item of cart.items) {
+        if (!item.variantId) continue;
+        await this.inventory.record(tx, {
+          tenantId,
+          variantId: item.variantId,
+          change: 0,
+          reason: StockChangeReason.ORDER_PLACED,
+          refType: 'Order',
+          refId: undefined, // orderId not yet known; filled below
+          note: `Reserved ${item.quantity} for ${userId}`,
+          actorUserId: userId,
+        });
+      }
+
       const newOrder = await tx.order.create({
         data: {
           tenantId,
           userId,
-          orderNumber: this.generateOrderNumber(),
+          orderNumber,
           status: 'CREATED',
           paymentStatus: 'PENDING',
           fulfillmentStatus: 'PENDING',
           subtotal: cart.subtotal,
-          taxAmount: cart.taxAmount,
-          shippingAmount: cart.shippingAmount,
+          taxAmount,
+          shippingAmount,
           discountAmount: cart.discountAmount,
-          grandTotal: cart.grandTotal,
+          grandTotal,
+          currencyCode: config.currencyCode,
           couponCode: dto.couponCode,
           billingAddress: {
             fullName: billingAddr.fullName,
@@ -125,8 +271,8 @@ export class OrdersService {
               unitPrice: item.unitPrice,
               quantity: item.quantity,
               subtotal: item.totalPrice,
-              taxAmount: item.totalPrice.mul(new Decimal(0.18)),
-              totalAmount: item.totalPrice.mul(new Decimal(1.18)),
+              taxAmount: item.totalPrice.mul(config.taxRate),
+              totalAmount: item.totalPrice.mul(new Decimal(1).add(config.taxRate)),
               status: 'CREATED',
             })),
           },
@@ -194,28 +340,62 @@ export class OrdersService {
     return order;
   }
 
-  async findAll(userId: string, tenantId: string) {
+  async findAll(userId: string, tenantId: string, opts: { allTenantOrders?: boolean } = {}) {
     return this.prisma.order.findMany({
-      where: { userId, tenantId },
+      where: opts.allTenantOrders
+        ? { tenantId }
+        : { userId, tenantId },
       include: {
         items: { select: { id: true, productName: true, quantity: true, totalAmount: true } },
+        user: opts.allTenantOrders
+          ? { select: { id: true, firstName: true, lastName: true, email: true } }
+          : false,
       },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async findOne(id: string, userId: string) {
+  async findOne(id: string, userId: string, tenantId: string, opts: { allTenantOrders?: boolean } = {}) {
     const order = await this.prisma.order.findFirst({
-      where: { id, userId },
+      where: opts.allTenantOrders
+        ? { id, tenantId }
+        : { id, userId, tenantId },
       include: {
         items: true,
         statusLogs: { orderBy: { createdAt: 'asc' } },
         payments: true,
+        user: opts.allTenantOrders
+          ? { select: { id: true, firstName: true, lastName: true, email: true } }
+          : false,
       },
     });
 
     if (!order) throw new NotFoundException('Order not found');
     return order;
+  }
+
+  async getInvoiceData(
+    id: string,
+    userId: string,
+    tenantId: string,
+    allTenantOrders: boolean,
+  ) {
+    const order = await this.prisma.order.findFirst({
+      where: allTenantOrders ? { id, tenantId } : { id, userId, tenantId },
+      include: {
+        items: true,
+        statusLogs: { orderBy: { createdAt: 'asc' } },
+        payments: true,
+        user: { select: { firstName: true, lastName: true, email: true } },
+      },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, name: true, slug: true, settings: true },
+    });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+    return { order, tenant };
   }
 
   async findByOrderNumber(orderNumber: string, tenantId: string) {
@@ -232,30 +412,240 @@ export class OrdersService {
     return order;
   }
 
+  async refund(orderId: string, tenantId: string, note: string | undefined, actorId: string) {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, tenantId },
+      include: {
+        user: { select: { email: true, firstName: true } },
+        payments: true,
+        items: true,
+      },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+
+    if (order.status === 'REFUNDED') {
+      throw new BadRequestException('Order already refunded');
+    }
+    if (order.status === 'CANCELLED') {
+      throw new BadRequestException('Cancelled orders cannot be refunded — use a new refund flow');
+    }
+
+    const captured = order.payments.find((p) => p.status === 'CAPTURED');
+
+    const wasFulfilled = this.isFulfilled(order.status);
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      // If the order had already consumed physical stock (SHIPPED/COMPLETED),
+      // refund must restore stock and put units back into lot availability.
+      // Otherwise, just release reservation.
+      for (const item of order.items) {
+        if (!item.variantId) continue;
+
+        if (wasFulfilled) {
+          await tx.productVariant.update({
+            where: { id: item.variantId },
+            data: { stockOnHand: { increment: item.quantity } },
+          });
+          await tx.inventoryLot.create({
+            data: {
+              tenantId,
+              variantId: item.variantId,
+              lotNumber: `RET-${order.orderNumber}-${item.id.slice(-6)}`,
+              quantity: item.quantity,
+              remaining: item.quantity,
+              unitCost: item.unitPrice,
+              notes: note ?? `Refund restock for order ${order.orderNumber}`,
+            },
+          });
+          await this.inventory.record(tx, {
+            tenantId,
+            variantId: item.variantId,
+            change: item.quantity,
+            reason: StockChangeReason.ORDER_REFUNDED,
+            refType: 'Order',
+            refId: orderId,
+            note: note ?? 'Refund — stock returned',
+            actorUserId: actorId,
+          });
+        } else {
+          await tx.productVariant.update({
+            where: { id: item.variantId },
+            data: { reservedStock: { decrement: item.quantity } },
+          });
+          await this.inventory.record(tx, {
+            tenantId,
+            variantId: item.variantId,
+            change: 0,
+            reason: StockChangeReason.ORDER_REFUNDED,
+            refType: 'Order',
+            refId: orderId,
+            note: note ?? 'Refund — reservation released',
+            actorUserId: actorId,
+          });
+        }
+      }
+
+      if (captured) {
+        await tx.payment.update({
+          where: { id: captured.id },
+          data: { status: 'REFUNDED' },
+        });
+      }
+
+      await tx.orderStatusLog.create({
+        data: {
+          orderId,
+          fromStatus: order.status,
+          toStatus: 'REFUNDED',
+          note: note ?? 'Refund issued',
+          createdByUserId: actorId,
+        },
+      });
+
+      return tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: OrderStatus.REFUNDED,
+          paymentStatus: PaymentStatus.REFUNDED,
+          fulfillmentStatus: wasFulfilled
+            ? FulfillmentStatus.RETURNED
+            : FulfillmentStatus.PENDING,
+        },
+        include: { statusLogs: { orderBy: { createdAt: 'asc' } }, payments: true },
+      });
+    });
+
+    // TODO: call Razorpay refund API for captured.gatewayPaymentId when RAZORPAY_KEY_SECRET present
+
+    if (order.user) {
+      const statusJob: OrderStatusJob = {
+        type: 'order-status-update',
+        to: order.user.email,
+        customerName: order.user.firstName,
+        orderNumber: order.orderNumber,
+        newStatus: 'REFUNDED',
+        note,
+      };
+      await this.emailQueue.add('order-status-update', statusJob, {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+      });
+    }
+
+    return result;
+  }
+
+  async cancelByCustomer(
+    orderId: string,
+    userId: string,
+    tenantId: string,
+    reason?: string,
+  ) {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, userId, tenantId },
+      include: { items: true, payments: true, user: { select: { email: true, firstName: true } } },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+
+    if (!['CREATED', 'CONFIRMED'].includes(order.status)) {
+      throw new BadRequestException(
+        'Order can no longer be cancelled — please contact support.',
+      );
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      for (const item of order.items) {
+        if (!item.variantId) continue;
+        await tx.productVariant.update({
+          where: { id: item.variantId },
+          data: { reservedStock: { decrement: item.quantity } },
+        });
+        await this.inventory.record(tx, {
+          tenantId,
+          variantId: item.variantId,
+          change: 0,
+          reason: StockChangeReason.ORDER_CANCELLED,
+          refType: 'Order',
+          refId: orderId,
+          note: reason ?? 'Customer cancelled',
+          actorUserId: userId,
+        });
+      }
+
+      await tx.orderStatusLog.create({
+        data: {
+          orderId,
+          fromStatus: order.status,
+          toStatus: 'CANCELLED',
+          note: reason
+            ? `Customer cancelled: ${reason}`
+            : 'Customer cancelled the order',
+          createdByUserId: userId,
+        },
+      });
+
+      return tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: OrderStatus.CANCELLED,
+          paymentStatus:
+            order.paymentStatus === PaymentStatus.CAPTURED
+              ? PaymentStatus.REFUNDED
+              : order.paymentStatus,
+          fulfillmentStatus: FulfillmentStatus.PENDING,
+        },
+        include: { items: true, statusLogs: { orderBy: { createdAt: 'asc' } }, payments: true },
+      });
+    });
+
+    if (order.user) {
+      const statusJob: OrderStatusJob = {
+        type: 'order-status-update',
+        to: order.user.email,
+        customerName: order.user.firstName,
+        orderNumber: order.orderNumber,
+        newStatus: 'CANCELLED',
+        note: reason,
+      };
+      await this.emailQueue.add('order-status-update', statusJob, {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+      });
+    }
+
+    return result;
+  }
+
   async updateStatus(
     orderId: string,
-    newStatus: string,
+    tenantId: string,
+    newStatusRaw: string,
     note?: string,
     updatedByUserId?: string,
   ) {
-    const order = await this.prisma.order.findUnique({
-      where: { id: orderId },
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, tenantId },
       include: { user: { select: { email: true, firstName: true } } },
     });
     if (!order) throw new NotFoundException('Order not found');
+
+    const newStatus = this.parseTargetStatus(newStatusRaw);
+    this.assertTransition(order.status, newStatus);
+    const wasFulfilled = this.isFulfilled(order.status);
+    const willBeFulfilled = this.isFulfilled(newStatus);
 
     const updatedOrder = await this.prisma.$transaction(async (tx) => {
       await tx.orderStatusLog.create({
         data: {
           orderId,
           fromStatus: order.status,
-          toStatus: newStatus as any,
+          toStatus: newStatus,
           note,
           createdByUserId: updatedByUserId,
         },
       });
 
-      if (newStatus === 'CANCELLED') {
+      if (newStatus === OrderStatus.CANCELLED) {
         const items = await tx.orderItem.findMany({ where: { orderId } });
         for (const item of items) {
           if (item.variantId) {
@@ -263,11 +653,21 @@ export class OrdersService {
               where: { id: item.variantId },
               data: { reservedStock: { decrement: item.quantity } },
             });
+            await this.inventory.record(tx, {
+              tenantId,
+              variantId: item.variantId,
+              change: 0,
+              reason: StockChangeReason.ORDER_CANCELLED,
+              refType: 'Order',
+              refId: orderId,
+              note: note ?? 'Cancelled by admin',
+              actorUserId: updatedByUserId,
+            });
           }
         }
       }
 
-      if (newStatus === 'COMPLETED') {
+      if (!wasFulfilled && willBeFulfilled) {
         const items = await tx.orderItem.findMany({ where: { orderId } });
         for (const item of items) {
           if (item.variantId) {
@@ -278,13 +678,41 @@ export class OrdersService {
                 reservedStock: { decrement: item.quantity },
               },
             });
+            // Consume lots (FIFO)
+            await this.inventory.consumeLots(tx, {
+              tenantId,
+              variantId: item.variantId,
+              quantity: item.quantity,
+            });
+            await this.inventory.record(tx, {
+              tenantId,
+              variantId: item.variantId,
+              change: -item.quantity,
+              reason: StockChangeReason.ORDER_PLACED,
+              refType: 'Order',
+              refId: orderId,
+              note: note ?? `Fulfilled order (${newStatus})`,
+              actorUserId: updatedByUserId,
+            });
           }
         }
       }
 
+      const data: {
+        status: OrderStatus;
+        fulfillmentStatus?: FulfillmentStatus;
+      } = {
+        status: newStatus,
+      };
+      if (willBeFulfilled) {
+        data.fulfillmentStatus = FulfillmentStatus.FULFILLED;
+      } else if (newStatus === OrderStatus.CANCELLED) {
+        data.fulfillmentStatus = FulfillmentStatus.PENDING;
+      }
+
       return tx.order.update({
         where: { id: orderId },
-        data: { status: newStatus as any },
+        data,
         include: { statusLogs: { orderBy: { createdAt: 'asc' } } },
       });
     });

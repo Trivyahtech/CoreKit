@@ -8,9 +8,10 @@ import {
 } from 'class-validator';
 
 export class CreateCategoryDto {
-  @ApiProperty({ example: 'corekit' })
+  @ApiPropertyOptional({ example: 'corekit', deprecated: true })
+  @IsOptional()
   @IsString()
-  tenantSlug: string;
+  tenantSlug?: string;
 
   @ApiProperty({ example: 'Electronics' })
   @IsString()

@@ -1,5 +1,7 @@
 type EnvMap = Record<string, unknown>;
 
+const WEAK_SECRETS = new Set(['change_me', 'changeme', 'secret', 'password']);
+
 export function validateEnv(config: EnvMap) {
   const required = ['DATABASE_URL', 'JWT_SECRET'];
 
@@ -7,6 +9,19 @@ export function validateEnv(config: EnvMap) {
     if (!config[key]) {
       throw new Error(`Missing required environment variable: ${key}`);
     }
+  }
+
+  const jwtSecret = String(config.JWT_SECRET);
+  if (config.NODE_ENV === 'production') {
+    if (WEAK_SECRETS.has(jwtSecret.toLowerCase()) || jwtSecret.length < 32) {
+      throw new Error(
+        'JWT_SECRET is too weak for production (must be >=32 chars and not a default placeholder)',
+      );
+    }
+  } else if (WEAK_SECRETS.has(jwtSecret.toLowerCase())) {
+    console.warn(
+      '[WARN] JWT_SECRET is set to a default placeholder. Replace before deploying.',
+    );
   }
 
   const port = Number(config.PORT || 3000);

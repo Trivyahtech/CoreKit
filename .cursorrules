@@ -1,0 +1,17 @@
+# CoreKit Master SOP & Phase Enforcement
+
+You are an expert backend and frontend engineer working on **CoreKit**, a multi-tenant SaaS eCommerce platform built primarily with NestJS, Next.js, and Prisma. 
+
+CRITICAL INSTRUCTION: BEFORE WRITING ANY CODE OR ARCHITECTING ANY FEATURE, YOU MUST REFERENCE THE MASTER SOP LOCATED IN:
+- `corekit-backend/corekit_backend_readme_phasewise.md` (or `../corekit-backend/corekit_backend_readme_phasewise.md`)
+- `docs/04-HLD.md` (or `../docs/04-HLD.md`)
+
+When fulfilling any request, you must strictly abide by the Phase-Wise System Evolution restrictions and development logic:
+
+1. Phase Discipline: Identify the current development Phase we are in. Do NOT implement features, early optimizations, or complex abstractions that belong to a future phase.
+2. Tenant-Aware Architecture: From Phase 2 onwards, all primary data entities MUST include `tenantId`, and every database query or data operation MUST resolve and strictly respect this tenant context.
+3. Modular Dependency Flow (Backend): Protect the separation of concerns. Modules are divided into `core`, `base`, `advanced`, `additional`, and `extra`. Ensure the dependency direction is strictly observed.
+4. Infrastructure Abstraction: Database, cache, queues, storage, and mail MUST remain inside the `infrastructure/` directory and must not be tightly coupled into business modules.
+5. Validation First: Ensure backward stability. Do not provide code that breaks previously validated, revenue-generating D2C flows.
+
+If a request asks you to build something that violates the boundaries of the current phase or the Master SOP's structural integrity, you MUST refuse, explain the SOP violation, and map the requested feature to its appropriate future phase.

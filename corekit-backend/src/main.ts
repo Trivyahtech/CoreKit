@@ -1,14 +1,24 @@
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import compression from 'compression';
 import helmet from 'helmet';
+import * as path from 'node:path';
 import { AppModule } from './app.module.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
   const config = app.get(ConfigService);
+
+  const storageRoot = path.resolve(
+    process.cwd(),
+    config.get<string>('STORAGE_LOCAL_ROOT', './storage'),
+  );
+  app.useStaticAssets(storageRoot, { prefix: '/uploads/' });
 
   const apiPrefix = config.get<string>('app.apiPrefix', 'api');
   app.setGlobalPrefix(apiPrefix);

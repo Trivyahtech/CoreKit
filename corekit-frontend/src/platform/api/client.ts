@@ -1,4 +1,5 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
+export const TENANT_SLUG = process.env.NEXT_PUBLIC_TENANT_SLUG || 'corekit';
 
 export class ApiError extends Error {
   constructor(public status: number, public data: any) {
@@ -36,7 +37,8 @@ async function fetchWithAuth(url: string, options: RequestInit = {}) {
   // Not all endpoints return JSON (e.g. 204 No Content)
   const contentType = response.headers.get('content-type');
   if (contentType && contentType.includes('application/json')) {
-    return response.json();
+    const json = await response.json();
+    return json && typeof json === 'object' && 'data' in json ? json.data : json;
   }
   return response.text();
 }

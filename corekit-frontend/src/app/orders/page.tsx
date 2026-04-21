@@ -1,99 +1,126 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { api } from "@/platform/api/client";
-import Link from "next/link";
-import { Package, ChevronRight, Loader2 } from "lucide-react";
-import { useAuth } from "@/modules/core/auth/AuthContext";
 import { useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
+import { ChevronRight, Package } from "lucide-react";
+import { api } from "@/platform/api/client";
+import { useAuth } from "@/modules/core/auth/AuthContext";
+import { StatusBadge } from "@/common/components/ui/Badge";
+import { formatPrice } from "@/common/components/ui/Price";
+import {
+  EmptyState,
+  ErrorState,
+  PageLoader,
+} from "@/common/components/ui/States";
+
+type OrderListItem = {
+  id: string;
+  orderNumber: string;
+  createdAt: string;
+  status: string;
+  paymentStatus: string;
+  grandTotal: string;
+  items: Array<{ id: string; quantity: number }>;
+};
 
 export default function OrdersPage() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!authLoading && !user) router.push("/login");
-  }, [user, authLoading, router]);
+    if (!authLoading && !user) router.push("/login?next=/orders");
+  }, [authLoading, user, router]);
 
-  const { data: orders, isLoading } = useQuery({
+  const {
+    data: orders,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery<OrderListItem[]>({
     queryKey: ["orders"],
     queryFn: () => api.get("/orders"),
     enabled: !!user,
   });
 
-  if (authLoading || isLoading) {
-    return (
-      <div className="flex justify-center py-32">
-        <Loader2 className="animate-spin h-10 w-10 text-indigo-600" />
-      </div>
-    );
-  }
-
-  if (!orders || orders.length === 0) {
-    return (
-      <div className="text-center py-32 px-4">
-        <Package className="mx-auto h-16 w-16 text-gray-300" />
-        <h2 className="mt-4 text-2xl font-bold text-gray-900">No orders yet</h2>
-        <p className="mt-2 text-gray-500">You haven't placed any orders.</p>
-        <Link
-          href="/products"
-          className="mt-8 inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-full shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
-        >
-          Start Shopping
-        </Link>
-      </div>
-    );
-  }
+  if (authLoading || isLoading) return <PageLoader />;
 
   return (
-    <div className="pt-8 pb-16">
-      <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 mb-10">Order History</h1>
+    <div>
+      <div className="pb-6 border-b border-card-border mb-6">
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+          My orders
+        </h1>
+        <p className="mt-1 text-sm text-muted">
+          Track your purchases and order status
+        </p>
+      </div>
 
-      <div className="bg-white shadow-sm overflow-hidden sm:rounded-md border border-gray-200">
-        <ul className="divide-y divide-gray-200">
-          {orders.map((order: any) => (
-            <li key={order.id}>
-              <Link href={`/orders/${order.id}`} className="block hover:bg-gray-50 transition-colors">
-                <div className="px-4 py-6 sm:px-6 flex items-center justify-between">
-                  <div className="flex-1 pr-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-bold text-indigo-600 truncate">
-                        {order.orderNumber}
+      {isError ? (
+        <ErrorState onRetry={() => refetch()} />
+      ) : !orders || orders.length === 0 ? (
+        <EmptyState
+          icon={Package}
+          title="No orders yet"
+          description="You haven't placed any orders. Start shopping to see them here."
+          action={
+            <Link
+              href="/products"
+              className="inline-flex h-10 px-5 items-center rounded-full bg-accent text-white text-sm font-semibold hover:bg-accent/90"
+            >
+              Start shopping
+            </Link>
+          }
+        />
+      ) : (
+        <ul className="space-y-3">
+          {orders.map((o) => {
+            const itemCount = o.items.reduce(
+              (n, it) => n + it.quantity,
+              0,
+            );
+            return (
+              <li key={o.id}>
+                <Link
+                  href={`/orders/${o.id}`}
+                  className="flex items-center gap-4 rounded-2xl border border-card-border bg-card-bg p-4 sm:p-5 hover:border-accent/50 hover:shadow-sm transition-all"
+                >
+                  <div className="h-12 w-12 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
+                    <Package className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-foreground truncate">
+                        {o.orderNumber}
                       </p>
-                      <div className="ml-2 flex-shrink-0 flex">
-                        <p className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          order.status === "CONFIRMED" || order.status === "COMPLETED"
-                            ? "bg-green-100 text-green-800"
-                            : order.status === "CANCELLED"
-                            ? "bg-red-100 text-red-800"
-                            : "bg-blue-100 text-blue-800"
-                        }`}>
-                          {order.status}
-                        </p>
-                      </div>
+                      <StatusBadge status={o.status} kind="order" />
+                      <StatusBadge
+                        status={o.paymentStatus}
+                        kind="payment"
+                      />
                     </div>
-                    <div className="mt-2 sm:flex sm:justify-between">
-                      <div className="sm:flex">
-                        <p className="flex items-center text-sm text-gray-500">
-                          {order.items.length} item{order.items.length > 1 ? "s" : ""}
-                        </p>
-                      </div>
-                      <div className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
-                        <p className="font-medium text-gray-900 mr-4">Total: ₹{order.grandTotal}</p>
-                        <p>
-                          Placed on <time dateTime={order.createdAt}>{new Date(order.createdAt).toLocaleDateString()}</time>
-                        </p>
-                      </div>
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted">
+                      <span>
+                        {itemCount} item{itemCount === 1 ? "" : "s"}
+                      </span>
+                      <span>·</span>
+                      <span>
+                        {new Date(o.createdAt).toLocaleDateString()}
+                      </span>
+                      <span>·</span>
+                      <span className="font-semibold text-foreground">
+                        {formatPrice(o.grandTotal)}
+                      </span>
                     </div>
                   </div>
-                  <ChevronRight className="h-5 w-5 text-gray-400" />
-                </div>
-              </Link>
-            </li>
-          ))}
+                  <ChevronRight className="h-5 w-5 text-muted shrink-0" />
+                </Link>
+              </li>
+            );
+          })}
         </ul>
-      </div>
+      )}
     </div>
   );
 }
